@@ -1,304 +1,606 @@
-// CAN'T CATCH ME - movement repair
-// This version uses a dedicated keyboard state and a simple player position.
-// WASD works whether or not pointer lock succeeds.
+// CAN'T CATCH ME — Stage 3 clean rebuild
+// WASD movement is handled globally and does NOT depend on pointer lock.
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec9ee);
-scene.fog = new THREE.Fog(0x8ec9ee, 55, 220);
+scene.fog = new THREE.Fog(0x8ec9ee, 70, 240);
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, .1, 1200);
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled=true;
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  800
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xbfe8ff,0x405533,.9));
-const sun=new THREE.DirectionalLight(0xffffff,1.2);
-sun.position.set(40,70,25);
-sun.castShadow=true;
+// ---------- LIGHTING ----------
+const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+sun.position.set(50, 90, 35);
+sun.castShadow = true;
+sun.shadow.mapSize.width = 2048;
+sun.shadow.mapSize.height = 2048;
 scene.add(sun);
 
+scene.add(new THREE.HemisphereLight(0xdaf1ff, 0x405533, 0.8));
+
+// ---------- MATERIALS ----------
+const grass = new THREE.MeshStandardMaterial({ color: 0x42a94b });
+const road = new THREE.MeshStandardMaterial({ color: 0x59636e });
+const sidewalk = new THREE.MeshStandardMaterial({ color: 0x9a9da0 });
+const wall = new THREE.MeshStandardMaterial({ color: 0x7d8388 });
+const wallDark = new THREE.MeshStandardMaterial({ color: 0x4e555b });
+const roof = new THREE.MeshStandardMaterial({ color: 0x343a40 });
+const wood = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
+const crateMat = new THREE.MeshStandardMaterial({ color: 0x9b6938 });
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x684225 });
+const leavesMat = new THREE.MeshStandardMaterial({ color: 0x246b31 });
+const metal = new THREE.MeshStandardMaterial({ color: 0x646b72, metalness: 0.4, roughness: 0.5 });
+const glass = new THREE.MeshStandardMaterial({
+  color: 0x4d8296,
+  transparent: true,
+  opacity: 0.65
+});
+const yellow = new THREE.MeshStandardMaterial({
+  color: 0xd4ad39,
+  emissive: 0x3b2c05,
+  emissiveIntensity: 0.2
+});
+
+// ---------- COLLISION ----------
+const colliders = [];
+
+function addCollider(x, z, width, depth) {
+  colliders.push({
+    minX: x - width / 2,
+    maxX: x + width / 2,
+    minZ: z - depth / 2,
+    maxZ: z + depth / 2
+  });
+}
+
+function addBox(x, y, z, width, height, depth, material, collision = true) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    material
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  if (collision) addCollider(x, z, width, depth);
+  return mesh;
+}
+
+function addCylinder(x, y, z, radius, height, material, collision = true) {
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, height, 16),
+    material
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  if (collision) addCollider(x, z, radius * 2, radius * 2);
+  return mesh;
+}
+
 // ---------- MAP ----------
-const colliders=[];
+const MAP = 220;
 
-function collider(x,z,w,d){
-  colliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2});
-}
-
-function box(x,y,z,w,h,d,mat,solid=true){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-  m.position.set(x,y,z);
-  m.castShadow=true;m.receiveShadow=true;
-  scene.add(m);
-  if(solid) collider(x,z,w,d);
-  return m;
-}
-
-const grass=new THREE.MeshStandardMaterial({color:0x3e873f});
-const road=new THREE.MeshStandardMaterial({color:0x41464b});
-const wall=new THREE.MeshStandardMaterial({color:0x777b80});
-const dark=new THREE.MeshStandardMaterial({color:0x4e5359});
-const wood=new THREE.MeshStandardMaterial({color:0x8b552d});
-const crateMat=new THREE.MeshStandardMaterial({color:0x9b6938});
-const trunkMat=new THREE.MeshStandardMaterial({color:0x684225});
-const leavesMat=new THREE.MeshStandardMaterial({color:0x174c25});
-
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(220,220),grass);
-ground.rotation.x=-Math.PI/2;
-ground.receiveShadow=true;
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(MAP, MAP),
+  grass
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
 scene.add(ground);
 
-box(0,.02,0,18,.04,220,road,false);
-box(0,.03,0,220,.04,18,road,false);
+// Roads
+addBox(0, 0.02, 0, 18, 0.04, MAP, road, false);
+addBox(0, 0.025, 0, MAP, 0.04, 18, road, false);
+addBox(-70, 0.03, 0, 12, 0.05, MAP, road, false);
+addBox(70, 0.03, 0, 12, 0.05, MAP, road, false);
+addBox(0, 0.035, -70, MAP, 0.05, 12, road, false);
+addBox(0, 0.035, 70, MAP, 0.05, 12, road, false);
 
-box(0,3,-109,220,6,2,dark);
-box(0,3,109,220,6,2,dark);
-box(-109,3,0,2,6,220,dark);
-box(109,3,0,2,6,220,dark);
+// Sidewalks
+addBox(-15, 0.05, 0, 4, 0.08, MAP, sidewalk, false);
+addBox(15, 0.05, 0, 4, 0.08, MAP, sidewalk, false);
+addBox(0, 0.055, -15, MAP, 0.08, 4, sidewalk, false);
+addBox(0, 0.055, 15, MAP, 0.08, 4, sidewalk, false);
 
-// Enterable buildings: four walls with a doorway gap in the front.
-function building(x,z,w,d,h){
-  const t=1;
-  const door=5;
+// Boundary
+const B = 108;
+addBox(0, 3, -B, 216, 6, 2, wallDark, true);
+addBox(0, 3, B, 216, 6, 2, wallDark, true);
+addBox(-B, 3, 0, 2, 6, 216, wallDark, true);
+addBox(B, 3, 0, 2, 6, 216, wallDark, true);
 
-  box(x,h/2,z-d/2+t/2,w,h,t,wall);
-  box(x-w/2+t/2,h/2,z,t,h,d,wall);
-  box(x+w/2-t/2,h/2,z,t,h,d,wall);
+// ---------- BUILDINGS ----------
+function building(x, z, width, depth, height = 7) {
+  const thickness = 0.8;
+  const doorWidth = 5;
 
-  const side=(w-door)/2;
-  const front=z+d/2-t/2;
-  box(x-w/2+side/2,h/2,front,side,h,t,wall);
-  box(x+w/2-side/2,h/2,front,side,h,t,wall);
+  // Floor
+  addBox(x, 0.08, z, width - 0.4, 0.12, depth - 0.4, wallDark, false);
 
-  box(x,h+.3,z,w+.5,.6,d+.5,dark,false);
+  // Back
+  addBox(
+    x,
+    height / 2,
+    z - depth / 2 + thickness / 2,
+    width,
+    height,
+    thickness,
+    wall
+  );
 
-  // Interior hiding objects.
-  box(x-3,1,z-2,3,2,1.5,wood);
-  box(x+3,1,z+2,2,2,2,crateMat);
+  // Left / right
+  addBox(
+    x - width / 2 + thickness / 2,
+    height / 2,
+    z,
+    thickness,
+    height,
+    depth,
+    wall
+  );
+
+  addBox(
+    x + width / 2 - thickness / 2,
+    height / 2,
+    z,
+    thickness,
+    height,
+    depth,
+    wall
+  );
+
+  // Front split around a real opening.
+  const frontZ = z + depth / 2 - thickness / 2;
+  const sideWidth = (width - doorWidth) / 2;
+
+  addBox(
+    x - width / 2 + sideWidth / 2,
+    height / 2,
+    frontZ,
+    sideWidth,
+    height,
+    thickness,
+    wall
+  );
+
+  addBox(
+    x + width / 2 - sideWidth / 2,
+    height / 2,
+    frontZ,
+    sideWidth,
+    height,
+    thickness,
+    wall
+  );
+
+  // Roof
+  addBox(x, height + 0.35, z, width + 0.5, 0.7, depth + 0.5, roof, false);
+
+  // Door frame / sign
+  addBox(x, height - 0.7, frontZ - 0.05, doorWidth + 0.3, 0.25, 0.2, yellow, false);
+
+  // Interior cover
+  addBox(x - 3, 1, z - 2, 3.5, 2, 1.2, wood, true);
+  addBox(x + 3, 1, z + 2, 2, 2, 2, crateMat, true);
 }
 
-building(-48,-48,30,25,7);
-building(48,-48,32,27,8);
-building(-48,48,28,30,7);
-building(48,48,34,26,8);
-building(-82,-38,24,28,6);
-building(82,38,25,30,7);
+building(-48, -48, 30, 25, 7);
+building(48, -48, 32, 27, 8);
+building(-48, 48, 28, 30, 7);
+building(48, 48, 34, 26, 8);
+building(-82, -38, 24, 28, 6.5);
+building(82, 38, 25, 30, 7);
 
-// Crates
-function crates(x,z){
-  for(let i=0;i<4;i++){
-    const ox=(i%2)*2.5-1.25;
-    const oz=Math.floor(i/2)*2.5-1.25;
-    box(x+ox,1,z+oz,2.2,2,2.2,crateMat);
+// ---------- OBJECTS ----------
+function crates(x, z, count = 4) {
+  for (let i = 0; i < count; i++) {
+    const ox = (i % 2) * 2.4 - 1.2;
+    const oz = Math.floor(i / 2) * 2.4 - 1.2;
+    addBox(x + ox, 1, z + oz, 2.2, 2, 2.2, crateMat, true);
   }
-}
-[[-25,-35],[25,-35],[-25,35],[25,35],[-75,-75],[75,75],[-75,70],[75,-70]].forEach(p=>crates(...p));
-
-// Trees
-function tree(x,z,s=1){
-  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.7*s,.7*s,4*s,14),trunkMat);
-  trunk.position.set(x,2*s,z);
-  trunk.castShadow=true;
-  scene.add(trunk);
-
-  const leaves=new THREE.Mesh(new THREE.SphereGeometry(2.7*s,16,12),leavesMat);
-  leaves.position.set(x,5*s,z);
-  leaves.castShadow=true;
-  scene.add(leaves);
-
-  // Tree collision is larger than just the trunk.
-  collider(x,z,3.1*s,3.1*s);
 }
 
 [
-[-95,-90,1.4],[-70,-92,1.1],[-40,-92,1.3],[40,-92,1.2],[70,-92,1.1],[95,-90,1.3],
-[-95,90,1.3],[-70,92,1.1],[-40,92,1.4],[40,92,1.2],[70,92,1.1],[95,90,1.4],
-[-95,-55,1.1],[-95,-20,1.3],[-95,25,1.2],[-95,60,1.4],
-[95,-55,1.2],[95,-20,1.1],[95,25,1.4],[95,60,1.2]
-].forEach(v=>tree(...v));
+  [-28, -35], [-8, -42], [27, -35], [75, -25],
+  [-30, 31], [30, 35], [-78, 25], [78, -65],
+  [-80, -75], [80, 75]
+].forEach(([x, z]) => crates(x, z, 4));
+
+function fence(x, z, width, depth) {
+  addBox(x, 1.4, z - depth / 2, width, 2.8, 0.35, woodDark, true);
+  addBox(x, 1.4, z + depth / 2, width, 2.8, 0.35, woodDark, true);
+  addBox(x - width / 2, 1.4, z, 0.35, 2.8, depth, woodDark, true);
+  addBox(x + width / 2, 1.4, z, 0.35, 2.8, depth, woodDark, true);
+}
+
+fence(-30, -78, 16, 8);
+fence(30, 78, 16, 8);
+
+function bench(x, z, rotation = 0) {
+  const group = new THREE.Group();
+
+  const seat = new THREE.Mesh(
+    new THREE.BoxGeometry(3.5, 0.35, 1),
+    wood
+  );
+  seat.position.y = 1.1;
+  group.add(seat);
+
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 1.1, 0.3),
+      metal
+    );
+    leg.position.set(side * 1.2, 0.55, 0);
+    group.add(leg);
+  }
+
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+  group.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  scene.add(group);
+
+  // Simple conservative collision box.
+  addCollider(x, z, 4.1, 1.5);
+}
+
+bench(-28, 8, Math.PI / 2);
+bench(28, -8, Math.PI / 2);
+bench(-60, 20, 0);
+bench(60, -20, 0);
+
+function lamp(x, z) {
+  addCylinder(x, 3, z, 0.18, 6, metal, true);
+
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.35, 12, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffcc,
+      emissive: 0xffff99,
+      emissiveIntensity: 0.8
+    })
+  );
+  bulb.position.set(x, 6.1, z);
+  scene.add(bulb);
+
+  const light = new THREE.PointLight(0xffe9b0, 0.65, 18);
+  light.position.set(x, 6, z);
+  scene.add(light);
+}
+
+[
+  [-18, -18], [18, -18], [-18, 18], [18, 18],
+  [-60, 0], [60, 0], [0, -60], [0, 60]
+].forEach(([x, z]) => lamp(x, z));
+
+function car(x, z, rotation = 0) {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 1.4, 3),
+    metal
+  );
+  body.position.y = 1;
+  group.add(body);
+
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(3.3, 1.2, 2.4),
+    glass
+  );
+  top.position.y = 1.9;
+  group.add(top);
+
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+
+  group.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+
+  scene.add(group);
+  addCollider(x, z, 6.5, 3.5);
+}
+
+car(-31, -9, Math.PI / 2);
+car(31, 9, Math.PI / 2);
+car(-92, 12);
+car(92, -12, Math.PI);
+
+// ---------- TREES ----------
+function tree(x, z, scale = 1) {
+  addCylinder(x, 2 * scale, z, 0.7 * scale, 4 * scale, trunkMat, true);
+
+  const leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(2.7 * scale, 16, 12),
+    leavesMat
+  );
+  leaves.position.set(x, 5 * scale, z);
+  leaves.castShadow = true;
+  leaves.receiveShadow = true;
+  scene.add(leaves);
+
+  addCollider(x, z, 3 * scale, 3 * scale);
+}
+
+[
+  [-95, -90, 1.4], [-70, -92, 1.1], [-45, -92, 1.3], [-20, -92, 1],
+  [20, -92, 1.2], [45, -92, 1.4], [70, -92, 1.1], [95, -90, 1.3],
+  [-94, 90, 1.3], [-65, 92, 1.1], [-40, 92, 1.4], [-18, 92, 1],
+  [18, 92, 1.2], [42, 92, 1.3], [70, 92, 1.1], [96, 90, 1.4],
+  [-95, -55, 1.1], [-95, -25, 1.3], [-95, 25, 1.2], [-95, 55, 1.4],
+  [95, -55, 1.2], [95, -25, 1.1], [95, 25, 1.4], [95, 55, 1.2],
+  [-75, -18, 1], [-75, 18, 1], [-45, -72, 1.1], [45, -72, 1.2],
+  [-45, 72, 1.2], [45, 72, 1.1], [76, -72, 1.1], [-76, 72, 1.2]
+].forEach(v => tree(v[0], v[1], v[2]));
 
 // ---------- PLAYER ----------
-const player={
-  x:0,
-  y:1.7,
-  z:70,
-  yaw:0,
-  pitch:0,
-  radius:.45
+const player = {
+  x: 0,
+  y: 1.7,
+  z: 72,
+  yaw: 0,
+  pitch: 0,
+  radius: 0.48
 };
 
-let started=false;
-let paused=false;
-let sensitivity=2.2;
+camera.position.set(player.x, player.y, player.z);
 
-// IMPORTANT: use a Set rather than an object.
-// Also listen on window so the game receives keys even when canvas isn't focused.
-const pressed=new Set();
+// ---------- INPUT ----------
+// IMPORTANT: movement is tracked with window listeners.
+// It works whether or not the mouse is locked.
+const keys = {
+  w: false,
+  a: false,
+  s: false,
+  d: false,
+  shift: false
+};
 
-window.addEventListener("keydown",e=>{
-  if(["KeyW","KeyA","KeyS","KeyD","ShiftLeft","ShiftRight","Space"].includes(e.code)){
+let gameStarted = false;
+let settingsOpen = false;
+let sensitivity = 2.2;
+
+function keyName(e) {
+  const code = e.code || "";
+  const key = (e.key || "").toLowerCase();
+
+  if (code === "KeyW" || key === "w") return "w";
+  if (code === "KeyA" || key === "a") return "a";
+  if (code === "KeyS" || key === "s") return "s";
+  if (code === "KeyD" || key === "d") return "d";
+  if (code === "ShiftLeft" || code === "ShiftRight" || key === "shift") return "shift";
+  return "";
+}
+
+function setKey(e, pressed) {
+  const k = keyName(e);
+  if (!k) return;
+
+  keys[k] = pressed;
+  e.preventDefault();
+}
+
+window.addEventListener("keydown", e => {
+  if (e.code === "Escape") {
     e.preventDefault();
-    pressed.add(e.code);
+    if (gameStarted) toggleSettings();
+    return;
   }
+  setKey(e, true);
+}, true);
 
-  if(e.code==="Escape"){
-    e.preventDefault();
-    if(started) toggleSettings();
-  }
+window.addEventListener("keyup", e => {
+  setKey(e, false);
+}, true);
+
+window.addEventListener("blur", clearKeys);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearKeys();
 });
 
-window.addEventListener("keyup",e=>{
-  pressed.delete(e.code);
-});
-
-window.addEventListener("blur",()=>{
-  pressed.clear();
-});
+function clearKeys() {
+  keys.w = false;
+  keys.a = false;
+  keys.s = false;
+  keys.d = false;
+  keys.shift = false;
+}
 
 // ---------- SETTINGS ----------
-const settings=document.getElementById("settings");
-const slider=document.getElementById("sensitivity");
-const sensitivityValue=document.getElementById("sensitivity-value");
+const settingsEl = document.getElementById("settings");
+const slider = document.getElementById("sensitivity");
+const sensitivityValue = document.getElementById("sensitivity-value");
 
-slider.addEventListener("input",()=>{
-  sensitivity=Number(slider.value);
-  sensitivityValue.textContent=sensitivity.toFixed(1);
-});
+function updateSensitivity() {
+  sensitivity = Number(slider.value);
+  sensitivityValue.textContent = sensitivity.toFixed(1);
+}
 
-function toggleSettings(){
-  paused=!paused;
-  settings.style.display=paused?"flex":"none";
-  pressed.clear();
+slider.addEventListener("input", updateSensitivity);
+updateSensitivity();
 
-  if(paused){
+function toggleSettings() {
+  settingsOpen = !settingsOpen;
+  settingsEl.style.display = settingsOpen ? "flex" : "none";
+  clearKeys();
+
+  if (settingsOpen) {
     document.exitPointerLock?.();
   }
 }
 
-document.getElementById("resume-button").onclick=toggleSettings;
-document.getElementById("close-settings").onclick=toggleSettings;
+document.getElementById("close-settings").addEventListener("click", () => {
+  settingsOpen = false;
+  settingsEl.style.display = "none";
+  clearKeys();
+});
 
-// ---------- MOUSE ----------
-document.addEventListener("mousemove",e=>{
-  if(!started || paused) return;
-  if(document.pointerLockElement!==document.body) return;
+document.getElementById("resume-button").addEventListener("click", () => {
+  settingsOpen = false;
+  settingsEl.style.display = "none";
+  clearKeys();
+  if (gameStarted) document.body.requestPointerLock?.();
+});
 
-  const amount=.001*sensitivity;
-  player.yaw-=e.movementX*amount;
-  player.pitch-=e.movementY*amount;
+// ---------- MOUSE LOOK ----------
+document.addEventListener("mousemove", e => {
+  if (!gameStarted || settingsOpen) return;
+  if (document.pointerLockElement !== document.body) return;
 
-  player.pitch=THREE.MathUtils.clamp(
+  player.yaw -= e.movementX * sensitivity * 0.0015;
+  player.pitch -= e.movementY * sensitivity * 0.0015;
+  player.pitch = THREE.MathUtils.clamp(
     player.pitch,
-    -Math.PI/2+.05,
-    Math.PI/2-.05
+    -Math.PI / 2 + 0.05,
+    Math.PI / 2 - 0.05
   );
 });
 
 // ---------- COLLISION ----------
-function blocked(x,z){
-  for(const c of colliders){
-    if(
-      x+player.radius>c.minX &&
-      x-player.radius<c.maxX &&
-      z+player.radius>c.minZ &&
-      z-player.radius<c.maxZ
-    ) return true;
+function collides(x, z) {
+  for (const c of colliders) {
+    if (
+      x + player.radius > c.minX &&
+      x - player.radius < c.maxX &&
+      z + player.radius > c.minZ &&
+      z - player.radius < c.maxZ
+    ) {
+      return true;
+    }
   }
   return false;
 }
 
-function move(dx,dz){
-  const nx=player.x+dx;
-  if(!blocked(nx,player.z)) player.x=nx;
+function movePlayer(dx, dz) {
+  // Axis-separated movement lets the player slide along walls.
+  const nextX = THREE.MathUtils.clamp(player.x + dx, -106.5, 106.5);
+  if (!collides(nextX, player.z)) player.x = nextX;
 
-  const nz=player.z+dz;
-  if(!blocked(player.x,nz)) player.z=nz;
-
-  player.x=THREE.MathUtils.clamp(player.x,-108,108);
-  player.z=THREE.MathUtils.clamp(player.z,-108,108);
+  const nextZ = THREE.MathUtils.clamp(player.z + dz, -106.5, 106.5);
+  if (!collides(player.x, nextZ)) player.z = nextZ;
 }
 
-// ---------- MOVEMENT ----------
-const status=document.getElementById("status");
+function updateMovement(dt) {
+  if (!gameStarted || settingsOpen) return;
 
-function updateMovement(dt){
-  if(!started || paused) return;
+  let forward = 0;
+  let strafe = 0;
 
-  let forward=0;
-  let side=0;
+  if (keys.w) forward += 1;
+  if (keys.s) forward -= 1;
+  if (keys.a) strafe -= 1;
+  if (keys.d) strafe += 1;
 
-  if(pressed.has("KeyW")) forward+=1;
-  if(pressed.has("KeyS")) forward-=1;
-  if(pressed.has("KeyD")) side+=1;
-  if(pressed.has("KeyA")) side-=1;
+  if (forward === 0 && strafe === 0) return;
 
-  if(forward===0 && side===0){
-    status.textContent="WASD: READY";
-    return;
-  }
+  const length = Math.hypot(forward, strafe);
+  forward /= length;
+  strafe /= length;
 
-  status.textContent="WASD: MOVING";
+  const speed = keys.shift ? 11 : 6;
 
-  const length=Math.hypot(forward,side);
-  forward/=length;
-  side/=length;
+  // Camera-relative movement.
+  const forwardX = -Math.sin(player.yaw);
+  const forwardZ = -Math.cos(player.yaw);
+  const rightX = Math.cos(player.yaw);
+  const rightZ = -Math.sin(player.yaw);
 
-  const speed=(pressed.has("ShiftLeft")||pressed.has("ShiftRight"))?11:6;
+  const dx = (
+    forwardX * forward +
+    rightX * strafe
+  ) * speed * dt;
 
-  const fx=-Math.sin(player.yaw);
-  const fz=-Math.cos(player.yaw);
-  const rx=Math.cos(player.yaw);
-  const rz=-Math.sin(player.yaw);
+  const dz = (
+    forwardZ * forward +
+    rightZ * strafe
+  ) * speed * dt;
 
-  move(
-    (fx*forward+rx*side)*speed*dt,
-    (fz*forward+rz*side)*speed*dt
-  );
+  movePlayer(dx, dz);
 }
 
 // ---------- CAMERA ----------
-function updateCamera(){
-  camera.position.set(player.x,player.y,player.z);
+function updateCamera() {
+  camera.position.set(player.x, player.y, player.z);
 
-  const d=10;
-  camera.lookAt(
-    player.x-Math.sin(player.yaw)*Math.cos(player.pitch)*d,
-    player.y+Math.sin(player.pitch)*d,
-    player.z-Math.cos(player.yaw)*Math.cos(player.pitch)*d
-  );
+  const lookDistance = 10;
+  const cosPitch = Math.cos(player.pitch);
+
+  const targetX =
+    player.x - Math.sin(player.yaw) * cosPitch * lookDistance;
+
+  const targetY =
+    player.y + Math.sin(player.pitch) * lookDistance;
+
+  const targetZ =
+    player.z - Math.cos(player.yaw) * cosPitch * lookDistance;
+
+  camera.lookAt(targetX, targetY, targetZ);
 }
 
-// ---------- PLAY / POINTER LOCK ----------
-document.getElementById("start-button").addEventListener("click",()=>{
-  started=true;
-  document.getElementById("start-screen").style.display="none";
-  renderer.domElement.focus();
+// ---------- START ----------
+const startScreen = document.getElementById("start-screen");
+const startButton = document.getElementById("start-button");
+
+startButton.addEventListener("click", () => {
+  gameStarted = true;
+  settingsOpen = false;
+  settingsEl.style.display = "none";
+  startScreen.style.display = "none";
+  clearKeys();
+
+  // Pointer lock is only for mouse look.
+  // WASD continues to work even if the browser refuses pointer lock.
   document.body.requestPointerLock?.();
 });
 
-renderer.domElement.addEventListener("click",()=>{
-  if(started && !paused) document.body.requestPointerLock?.();
+// Clicking the game area re-locks the mouse after it was released.
+renderer.domElement.addEventListener("click", () => {
+  if (gameStarted && !settingsOpen) {
+    document.body.requestPointerLock?.();
+  }
 });
 
 // ---------- LOOP ----------
-let last=performance.now();
+let previousTime = performance.now();
 
-function loop(now){
-  requestAnimationFrame(loop);
+function animate(now) {
+  requestAnimationFrame(animate);
 
-  const dt=Math.min((now-last)/1000,.05);
-  last=now;
+  const dt = Math.min((now - previousTime) / 1000, 0.05);
+  previousTime = now;
 
   updateMovement(dt);
   updateCamera();
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 }
 
-requestAnimationFrame(loop);
+requestAnimationFrame(animate);
 
-window.addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
+// ---------- RESIZE ----------
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });

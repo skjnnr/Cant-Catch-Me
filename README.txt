@@ -1,22 +1,22 @@
-CAN'T CATCH ME — STAGE 3
+CAN'T CATCH ME — CLEAN MOVEMENT FIX
 
-NEW:
-- Much larger 220 x 220 map
-- More buildings
-- Buildings have door openings and enterable interiors
-- Trees have collision
-- More crates, fences, benches, lamps, cars and cover
-- ESC opens the Settings menu
-- Mouse sensitivity slider from 0.5 to 5.0
-- Resume button and X button close Settings
-- Clicking the game locks the mouse again
+This ZIP is a clean rebuild of game.js based on the Stage 3 folder.
 
-CONTROLS:
-WASD = Move
-SHIFT = Sprint
-Mouse = Look
-ESC = Settings / close Settings
+Controls:
+W A S D = move
+SHIFT = sprint
+Mouse = look around
+ESC = settings
+Settings includes mouse sensitivity.
 
-GITHUB PAGES:
-Replace index.html, style.css and game.js with these files.
-Commit the changes, then refresh the site with Ctrl+Shift+R.
+IMPORTANT:
+Replace the old game.js in your GitHub repository with the game.js in this ZIP.
+Keep index.html and style.css from this folder.
+
+After updating GitHub Pages:
+1. Open the site.
+2. Press Ctrl + Shift + R to force-refresh.
+3. Click PLAY.
+4. Press W, A, S, or D.
+
+The movement code is independent of pointer lock, so WASD should still work even if Chrome does not lock the mouse.
