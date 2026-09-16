@@ -145,3 +145,45 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
 #room-code-display span{display:block;font-size:10px;color:#8ea3b8;font-weight:800;letter-spacing:1px}
 #room-code-display b{display:block;margin-top:2px;font-size:18px;letter-spacing:2px;color:#38b5ff}
 .loading-controls{margin-top:28px;color:#aebdd0;font-family:Arial,sans-serif}.loading-controls b{display:block;color:white;font-size:15px;letter-spacing:2px;margin-bottom:7px}.loading-controls span{font-size:14px}
+
+/* In-game room leaderboard */
+#room-leaderboard{
+  display:none;
+  position:fixed;
+  left:18px;
+  top:112px;
+  width:220px;
+  box-sizing:border-box;
+  padding:12px 14px 13px;
+  background:rgba(22,92,210,.92);
+  border:2px solid rgba(255,255,255,.85);
+  border-radius:10px;
+  color:#fff;
+  z-index:40;
+  font-family:Arial,Helvetica,sans-serif;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);
+}
+#leaderboard-title{
+  color:#fff;
+  font-weight:900;
+  font-size:18px;
+  letter-spacing:.5px;
+  margin-bottom:9px;
+}
+#leaderboard-names{
+  color:#fff;
+  font-size:14px;
+  line-height:1.45;
+}
+.leaderboard-player{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#leaderboard-count{
+  color:#fff;
+  font-weight:800;
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.55);
+}

@@ -1085,6 +1085,7 @@ const roomTypeLabel=document.getElementById("room-type-label");
 const roomCodeText=document.getElementById("room-code-text");
 
 async function stopCurrentLobbyChannel(){
+  hideRoomLeaderboard();
   // Stop sending movement immediately before removing Presence/channel.
   multiplayerStarted=false;
   multiplayerLoggedIn=false;
@@ -1144,6 +1145,7 @@ async function enterSelectedLobby(mode,code=""){
   roomTypeLabel.textContent=mode==="private"?"PRIVATE ROOM CODE":"PUBLIC ROOM CODE";
   roomCodeText.textContent=lobbyCode;
   roomCodeDisplay.style.display="block";
+  setTimeout(updateRoomLeaderboard,100);
   lobbyChoiceScreen.style.display="none";
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
@@ -1512,3 +1514,84 @@ function startMultiplayer(){
 // Multiplayer intentionally does NOT start here.
 // enterGame() starts it only after Supabase confirms an authenticated session.
 // ---- END MULTIPLAYER ----
+
+
+// Updated game credits
+(function updateGameCredits(){
+  const credits=document.getElementById("credits-modal") ||
+                document.getElementById("credits-popup") ||
+                document.getElementById("credits-screen");
+  if(!credits) return;
+  const body=credits.querySelector(".credits-body") ||
+             credits.querySelector(".modal-body") ||
+             credits.querySelector(".popup-body") || credits;
+  const old=body.querySelector("#official-game-credits");
+  if(old) old.remove();
+  const box=document.createElement("div");
+  box.id="official-game-credits";
+  box.innerHTML='<p>Game Created By - fundindev</p><p>Game Owned By - fundindev, presence</p><p>Discord Link []</p>';
+  body.appendChild(box);
+})();
+
+
+// ---------- ROOM LEADERBOARD ----------
+const roomLeaderboard=document.getElementById("room-leaderboard");
+const leaderboardNames=document.getElementById("leaderboard-names");
+const leaderboardCount=document.getElementById("leaderboard-count");
+
+function getRoomPlayers(){
+  const players=[];
+  if(ch){
+    const state=ch.presenceState();
+    for(const entries of Object.values(state)){
+      for(const p of entries){
+        if(!p) continue;
+        players.push({
+          id:String(p.id||""),
+          username:String(p.username||p.name||"Player")
+        });
+      }
+    }
+  }
+
+  // Presence can take a moment to sync, so keep the authenticated local player visible.
+  if(multiplayerLoggedIn && !players.some(p=>p.id===myId)){
+    players.push({id:myId,username:currentUsername||"Player"});
+  }
+
+  const unique=new Map();
+  for(const p of players) if(!unique.has(p.id)) unique.set(p.id,p);
+  return [...unique.values()].slice(0,PUBLIC_ROOM_LIMIT);
+}
+
+function updateRoomLeaderboard(){
+  if(!roomLeaderboard||!leaderboardNames||!leaderboardCount) return;
+  if(!multiplayerLoggedIn || !ch){
+    leaderboardNames.innerHTML="";
+    leaderboardCount.textContent="Player 0/12";
+    roomLeaderboard.style.display="none";
+    return;
+  }
+
+  const players=getRoomPlayers();
+  leaderboardNames.innerHTML="";
+  players.forEach((p,i)=>{
+    const row=document.createElement("div");
+    row.className="leaderboard-player";
+    row.textContent=p.username || ("Player "+(i+1));
+    leaderboardNames.appendChild(row);
+  });
+
+  leaderboardCount.textContent="Player "+players.length+"/"+PUBLIC_ROOM_LIMIT;
+  roomLeaderboard.style.display="block";
+}
+
+function hideRoomLeaderboard(){
+  if(roomLeaderboard) roomLeaderboard.style.display="none";
+  if(leaderboardNames) leaderboardNames.innerHTML="";
+  if(leaderboardCount) leaderboardCount.textContent="Player 0/12";
+}
+
+setInterval(()=>{
+  if(multiplayerLoggedIn && ch) updateRoomLeaderboard();
+},500);

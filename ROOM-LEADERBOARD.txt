@@ -1,0 +1,9 @@
+Room leaderboard added:
+- Blue panel under the room code on the left.
+- White 'Leader board' heading.
+- Displays connected players' usernames from Supabase Presence.
+- Maximum 12 names.
+- Shows Player X/12.
+- Refreshes every 0.5 seconds as players join/disconnect.
+- Hidden when disconnected or back at the main menu.
+- Existing 12-player automatic public rooms and private rooms retained.
