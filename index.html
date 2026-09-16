@@ -31,6 +31,34 @@
   </div>
 </div>
 
+
+<div id="map-select-screen">
+  <div class="map-menu">
+    <div class="map-title">CAN'T CATCH ME</div>
+    <h2>SELECT MAP</h2>
+    <p>Choose where you want to play</p>
+    <div class="map-cards">
+      <button class="map-card selected" data-map="original">
+        <div class="map-preview original-preview"><span>ORIGINAL</span></div>
+        <b>ORIGINAL</b><small>Current city map</small>
+      </button>
+      <button class="map-card" data-map="castle">
+        <div class="map-preview castle-preview"><span>CASTLE</span></div>
+        <b>CASTLE</b><small>Stone fortress map</small>
+      </button>
+    </div>
+    <button id="map-confirm">PLAY SELECTED MAP</button>
+  </div>
+</div>
+<div id="loading-screen">
+  <div class="loading-box">
+    <div class="loading-logo">CAN'T CATCH ME</div>
+    <h2 id="loading-map-name">LOADING ORIGINAL</h2>
+    <div class="loading-track"><div id="loading-bar"></div></div>
+    <div id="loading-percent">0%</div>
+  </div>
+</div>
+
 <div id="mp" style="position:fixed;right:14px;top:14px;z-index:50;background:#000a;color:white;padding:10px;border-radius:8px;font-family:Arial;pointer-events:none"><b>MULTIPLAYER</b><div id="mp-status">Connecting...</div><div id="mp-count">Players: 1</div></div>
 <div id="hud">
   <div id="logo">CAN'T CATCH ME</div>

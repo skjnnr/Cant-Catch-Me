@@ -75,3 +75,23 @@ canvas{display:block}
   color:#bfc3ca;
   line-height:1.5;
 }
+
+#map-select-screen,#loading-screen{position:fixed;inset:0;z-index:900;display:none;align-items:center;justify-content:center;color:#fff;background:radial-gradient(circle at 50% 30%,#26384d 0,#111923 55%,#080c12 100%);font-family:Arial,sans-serif}
+.map-menu{width:min(900px,92vw);padding:34px;border:1px solid #40536b;border-radius:20px;background:rgba(10,18,28,.94);box-shadow:0 24px 80px #000b;text-align:center}
+.map-title{font-size:clamp(30px,5vw,54px);font-weight:1000;letter-spacing:4px;color:#39a9ff;text-shadow:0 4px 0 #0b4b8c}
+.map-menu h2{font-size:34px;margin:20px 0 4px}.map-menu>p{color:#9eacc0;margin-top:0}
+.map-cards{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:25px 0}
+.map-card{padding:10px 10px 16px;border:2px solid #38495c;border-radius:14px;background:#131e2b;color:white;cursor:pointer;transition:.15s}
+.map-card:hover,.map-card.selected{border-color:#36aaff;box-shadow:0 0 20px #168cff66;transform:translateY(-2px)}
+.map-card b{display:block;font-size:22px;margin-top:10px}.map-card small{display:block;color:#9fb0c4;margin-top:5px}
+.map-preview{height:210px;border-radius:9px;display:flex;align-items:end;justify-content:center;overflow:hidden;position:relative;background-size:cover}
+.map-preview span{margin-bottom:15px;padding:8px 14px;border-radius:7px;background:#07111dcc;font-weight:900;letter-spacing:2px}
+.original-preview{background:linear-gradient(140deg,#476d48,#6e777b 42%,#333d43 43%,#232a30 55%,#4b744b 56%)}
+.castle-preview{background:linear-gradient(160deg,#27394e,#52616b 42%,#75858b 43%,#44535b 65%,#26333c)}
+.castle-preview:before{content:"♜  ♜  ♜";position:absolute;inset:35px 0 auto;font-size:80px;color:#9aa9ae;text-shadow:0 8px 0 #46535a}
+#map-confirm{padding:14px 44px;border:0;border-radius:10px;background:#168df0;color:white;font-size:19px;font-weight:900;cursor:pointer}
+#loading-screen{z-index:950}.loading-box{width:min(620px,86vw);text-align:center}.loading-logo{font-size:clamp(34px,7vw,68px);font-weight:1000;color:#38aaff;letter-spacing:4px}
+.loading-box h2{letter-spacing:3px}.loading-track{height:18px;border-radius:20px;background:#172536;overflow:hidden;border:1px solid #42556c;margin:24px 0 10px}
+#loading-bar{height:100%;width:0;background:linear-gradient(90deg,#167fea,#46bdff);transition:width .15s}
+#loading-percent{font-size:18px;color:#b7c7d8}
+@media(max-width:650px){.map-cards{grid-template-columns:1fr}.map-preview{height:140px}.map-menu{padding:20px}}

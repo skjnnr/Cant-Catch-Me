@@ -127,6 +127,7 @@ const M = {
 };
 
 const colliders = [];
+const preMapChildren = new Set(scene.children);
 
 function addCollider(x,z,w,d,topY=0,jumpable=true) {
   colliders.push({
@@ -242,6 +243,118 @@ box(0,3,-109,218,6,1,M.dark,false); addCollider(0,-109,218,1,6,false);
 box(0,3,109,218,6,1,M.dark,false); addCollider(0,109,218,1,6,false);
 box(-109,3,0,1,6,218,M.dark,false); addCollider(-109,0,1,218,6,false);
 box(109,3,0,1,6,218,M.dark,false); addCollider(109,0,1,218,6,false);
+
+
+// ---------- MAP SYSTEM ----------
+const originalMapObjects = scene.children.filter(o=>!preMapChildren.has(o));
+const originalColliders = colliders.map(c=>({...c}));
+const castleObjects = [];
+let castleColliders = [];
+let selectedMap = "original";
+let pendingMap = "original";
+
+function castleStoneTexture(){
+  const c=document.createElement("canvas"); c.width=c.height=256;
+  const x=c.getContext("2d");
+  x.fillStyle="#6f7d83"; x.fillRect(0,0,256,256);
+  for(let y=0;y<256;y+=32){
+    const offset=((y/32)%2)*24;
+    for(let xx=-48+offset;xx<256;xx+=48){
+      x.fillStyle=`rgb(${105+Math.random()*18|0},${118+Math.random()*16|0},${124+Math.random()*16|0})`;
+      x.fillRect(xx+1,y+1,46,30);
+      x.strokeStyle="#4e5b61"; x.strokeRect(xx+1,y+1,46,30);
+    }
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(3,3);
+  return t;
+}
+const castleStone=new THREE.MeshStandardMaterial({map:castleStoneTexture(),roughness:.95,color:0xd7e0e3});
+const castleDark=new THREE.MeshStandardMaterial({color:0x4b5960,roughness:1});
+const castleWood=new THREE.MeshStandardMaterial({color:0x76502f,roughness:.95});
+const castleGrass=new THREE.MeshStandardMaterial({color:0x526f45,roughness:1});
+const castleBannerRed=new THREE.MeshStandardMaterial({color:0x9c3f35,roughness:.9});
+const castleBannerBlue=new THREE.MeshStandardMaterial({color:0x315f91,roughness:.9});
+
+function castleAddCollider(x,z,w,d,topY=0,jumpable=true){
+  castleColliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,topY,jumpable});
+}
+function castleBox(x,y,z,w,h,d,mat=castleStone,solid=true){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); castleObjects.push(m);
+  if(solid) castleAddCollider(x,z,w,d,y+h/2,true);
+  return m;
+}
+function castleTower(x,z,w=15,h=13){
+  castleBox(x,h/2,z,w,h,w);
+  for(const [dx,dz] of [[-w/2+1.5,-w/2+1.5],[w/2-1.5,-w/2+1.5],[-w/2+1.5,w/2-1.5],[w/2-1.5,w/2-1.5]])
+    castleBox(x+dx,h+1,z+dz,3,2,3,castleStone,true);
+}
+function buildCastleMap(){
+  castleColliders=[];
+  // stone foundation and grassy inner courtyard
+  castleBox(0,-.55,0,170,1,170,castleDark,false);
+  castleBox(0,.01,0,72,.08,72,castleGrass,false);
+
+  // outer fortress walls with battlements
+  castleBox(0,5,-82,164,10,5);
+  castleBox(0,5,82,164,10,5);
+  castleBox(-82,5,0,5,10,164);
+  castleBox(82,5,0,5,10,164);
+  for(let x=-76;x<=76;x+=10){ castleBox(x,11,-82,5,3,5); castleBox(x,11,82,5,3,5); }
+  for(let z=-72;z<=72;z+=10){ castleBox(-82,11,z,5,3,5); castleBox(82,11,z,5,3,5); }
+
+  // four corner towers
+  castleTower(-72,-72,18,16); castleTower(72,-72,18,16);
+  castleTower(-72,72,18,16); castleTower(72,72,18,16);
+
+  // central keep with doorway gap
+  castleBox(0,7,-25,52,14,5);
+  castleBox(-24,7,0,5,14,50);
+  castleBox(24,7,0,5,14,50);
+  castleBox(-15,7,25,18,14,5);
+  castleBox(15,7,25,18,14,5);
+  castleBox(0,14.5,0,53,1.5,52,castleDark,false);
+  castleTower(-20,-20,10,18); castleTower(20,-20,10,18);
+
+  // raised walkways, stairs/stepping platforms and hiding blocks
+  castleBox(-48,3,0,28,6,10);
+  castleBox(48,3,0,28,6,10);
+  for(let i=0;i<6;i++){
+    castleBox(-34+i*3,0.5+i*.55,38,3,1+i*1.1,8);
+    castleBox(34-i*3,0.5+i*.55,-42,3,1+i*1.1,8);
+  }
+  for(const [x,z] of [[-12,48],[12,48],[-48,-28],[48,28],[0,-55],[-55,35],[55,-35]])
+    castleBox(x,1.5,z,4,3,4,castleWood,true);
+
+  // banners like the reference image
+  for(const [x,z,mat] of [[-70,-62,castleBannerBlue],[70,-62,castleBannerRed],[-70,62,castleBannerRed],[70,62,castleBannerBlue]]){
+    const b=castleBox(x,10,z,6,7,.25,mat,false);
+  }
+
+  // warm torch lights around the fortress
+  for(const [x,z] of [[-30,-30],[30,-30],[-30,30],[30,30],[-68,0],[68,0],[0,-68],[0,68]]){
+    const light=new THREE.PointLight(0xffa13a,1.1,22,2);
+    light.position.set(x,6,z); scene.add(light); castleObjects.push(light);
+    const flame=new THREE.Mesh(new THREE.SphereGeometry(.28,8,6),new THREE.MeshBasicMaterial({color:0xff9b32}));
+    flame.position.copy(light.position); scene.add(flame); castleObjects.push(flame);
+  }
+  castleObjects.forEach(o=>o.visible=false);
+}
+buildCastleMap();
+
+function applyMap(name){
+  selectedMap=name==="castle"?"castle":"original";
+  originalMapObjects.forEach(o=>o.visible=selectedMap==="original");
+  castleObjects.forEach(o=>o.visible=selectedMap==="castle");
+  colliders.length=0;
+  const source=selectedMap==="castle"?castleColliders:originalColliders;
+  source.forEach(c=>colliders.push({...c}));
+  player.x=0; player.z=selectedMap==="castle"?62:72; player.y=1.7;
+  player.velocityY=0; player.onGround=true; player.yaw=0; player.pitch=0;
+  updatePlayerModel();
+}
 
 // Player
 const player = {
@@ -728,6 +841,38 @@ async function loadCurrentPlayerRole(user){
   return currentRole;
 }
 
+
+const mapSelectScreen=document.getElementById("map-select-screen");
+const loadingScreen=document.getElementById("loading-screen");
+const loadingBar=document.getElementById("loading-bar");
+const loadingPercent=document.getElementById("loading-percent");
+const loadingMapName=document.getElementById("loading-map-name");
+
+document.querySelectorAll(".map-card").forEach(card=>{
+  card.addEventListener("click",()=>{
+    pendingMap=card.dataset.map;
+    document.querySelectorAll(".map-card").forEach(c=>c.classList.toggle("selected",c===card));
+  });
+});
+document.getElementById("map-confirm")?.addEventListener("click",()=>{
+  mapSelectScreen.style.display="none";
+  loadingScreen.style.display="flex";
+  loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
+  let p=0;
+  const timer=setInterval(()=>{
+    p=Math.min(100,p+10);
+    loadingBar.style.width=p+"%"; loadingPercent.textContent=p+"%";
+    if(p>=100){
+      clearInterval(timer);
+      applyMap(pendingMap);
+      setTimeout(()=>{
+        loadingScreen.style.display="none";
+        if(startScreen) startScreen.style.display="flex";
+      },180);
+    }
+  },55);
+});
+
 async function enterGame(user){
   currentAuthUser=user;
   try{
@@ -739,6 +884,10 @@ async function enterGame(user){
   currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
   multiplayerLoggedIn=true;
   authScreen.style.display="none";
+  if(startScreen) startScreen.style.display="none";
+  if(mapSelectScreen) mapSelectScreen.style.display="flex";
+  pendingMap=selectedMap;
+  document.querySelectorAll(".map-card").forEach(c=>c.classList.toggle("selected",c.dataset.map===pendingMap));
   if(earlyLogoutBtn) earlyLogoutBtn.style.display="block";
   if(document.activeElement && typeof document.activeElement.blur==="function") document.activeElement.blur();
   clearMovementKeys();
@@ -887,7 +1036,7 @@ function makeNameSprite(name,role="player"){
    x.font="bold 46px Arial";
    x.lineWidth=10;x.strokeStyle="rgba(0,0,0,.9)";
    x.strokeText(tag,256,48);
-   x.fillStyle=isOwner?"#2f80ff":"#55c8ff";
+   x.fillStyle=isOwner?"#2f80ff":"#ff8c24";
    x.fillText(tag,256,48);
  }
 
