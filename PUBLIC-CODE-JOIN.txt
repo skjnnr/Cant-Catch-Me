@@ -1,0 +1,5 @@
+Public-code join update:
+- PUBLIC-1 can now be typed into the Private Code field.
+- PUBLIC1 is also accepted and normalized to PUBLIC-1.
+- Pressing JOIN PRIVATE CODE with PUBLIC-1 routes the player into the normal shared public Supabase room.
+- Six-character private codes continue to route into their private room.

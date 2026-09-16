@@ -1,0 +1,7 @@
+Private lobby repair:
+- Uses one canonical Supabase Realtime channel name per private code.
+- Same 6-character code now maps to the same channel for every player.
+- Properly removes the previous room before switching rooms.
+- Create Private Code now displays the code first; JOIN PRIVATE CODE enters it.
+- Added connection feedback.
+- Public lobby remains separate.

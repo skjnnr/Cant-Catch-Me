@@ -906,9 +906,9 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 
 
-function showMainMenu(){
+async function showMainMenu(){
   roomCodeDisplay.style.display="none";
-  stopCurrentLobbyChannel();
+  await stopCurrentLobbyChannel();
   started=false;
   settingsOpen=false;
   keys.clear();
@@ -980,6 +980,7 @@ const roomTypeLabel=document.getElementById("room-type-label");
 const roomCodeText=document.getElementById("room-code-text");
 
 async function stopCurrentLobbyChannel(){
+  multiplayerStarted=false;
   if(ch){
     try{await ch.untrack();}catch(_){}
     try{await authClient.removeChannel(ch);}catch(_){}
@@ -989,13 +990,22 @@ async function stopCurrentLobbyChannel(){
 }
 async function enterSelectedLobby(mode,code="PUBLIC"){
   lobbyMode=mode;
-  lobbyCode=mode==="private"?cleanLobbyCode(code):"PUBLIC";
+  lobbyCode=mode==="private"?cleanLobbyCode(code):"PUBLIC-1";
   if(mode==="private" && lobbyCode.length!==6) return false;
   await stopCurrentLobbyChannel();
   multiplayerLoggedIn=true;
-  await startMultiplayer();
-  roomTypeLabel.textContent=mode==="private"?"PRIVATE CODE":"PUBLIC LOBBY";
+  const msg=document.getElementById("private-code-message");
+  if(msg && mode==="private") msg.textContent="Connecting to "+lobbyCode+"...";
+  try{
+    await startMultiplayer();
+  }catch(err){
+    console.error("Lobby connection failed:",err);
+    if(msg) msg.textContent="Could not connect to that lobby. Try again.";
+    return false;
+  }
+  roomTypeLabel.textContent=mode==="private"?"PRIVATE ROOM CODE":"PUBLIC ROOM CODE";
   roomCodeText.textContent=lobbyCode;
+  roomCodeDisplay.style.display="block";
   lobbyChoiceScreen.style.display="none";
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
@@ -1028,21 +1038,30 @@ document.getElementById("private-code-back")?.addEventListener("click",()=>{
 document.getElementById("create-private")?.addEventListener("click",()=>{
   const code=makeLobbyCode();
   document.getElementById("private-code-input").value=code;
-  document.getElementById("private-code-message").textContent="Private code created: "+code;
-  enterSelectedLobby("private",code);
+  document.getElementById("private-code-message").textContent="Code created: "+code+" — press JOIN PRIVATE CODE to enter.";
 });
 document.getElementById("join-private")?.addEventListener("click",()=>{
   const input=document.getElementById("private-code-input");
   const code=cleanLobbyCode(input.value);
   input.value=code;
+
+  // Typing the public room code here joins the same public lobby.
+  if(code==="PUBLIC-1"){
+    document.getElementById("private-code-message").textContent="Joining public lobby PUBLIC-1...";
+    enterSelectedLobby("public","PUBLIC-1");
+    return;
+  }
+
   if(code.length!==6){
-    document.getElementById("private-code-message").textContent="Enter a 6-character private code.";
+    document.getElementById("private-code-message").textContent="Enter a 6-character private code or PUBLIC-1.";
     return;
   }
   enterSelectedLobby("private",code);
 });
 document.getElementById("private-code-input")?.addEventListener("input",e=>{
-  e.target.value=cleanLobbyCode(e.target.value);
+  let raw=String(e.target.value||"").toUpperCase().replace(/[^A-Z0-9-]/g,"");
+  if(raw.startsWith("PUBLIC")) e.target.value=raw.slice(0,8);
+  else e.target.value=raw.replace(/-/g,"").slice(0,6);
 });
 
 document.querySelectorAll(".map-card").forEach(card=>{

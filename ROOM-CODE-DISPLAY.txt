@@ -1,0 +1,5 @@
+Room code display update:
+- Public lobby shows PUBLIC ROOM CODE / PUBLIC-1 in the top-left.
+- Private lobby shows PRIVATE ROOM CODE / the six-character private code.
+- Display appears after lobby selection and remains visible during gameplay.
+- Returning to the main menu hides the room-code display.
