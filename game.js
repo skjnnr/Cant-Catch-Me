@@ -317,6 +317,8 @@ const keys = new Set();
 let jumpQueued = false;
 
 function down(e) {
+  const el=e.target;
+  if(el && (el.tagName==="INPUT" || el.tagName==="TEXTAREA" || el.tagName==="SELECT" || el.isContentEditable)) return;
   // Queue one jump per Space press (no auto-bunny-hop from key repeat).
   if (e.code === "Space" && !e.repeat) {
     jumpQueued = true;
@@ -328,6 +330,8 @@ function down(e) {
     e.preventDefault();
 }
 function up(e) {
+  const el=e.target;
+  if(el && (el.tagName==="INPUT" || el.tagName==="TEXTAREA" || el.tagName==="SELECT" || el.isContentEditable)) return;
   keys.delete(e.code);
   keys.delete((e.key || "").toLowerCase());
 }
@@ -604,9 +608,8 @@ function isTypingInForm(){
 
 // Prevent typing on the login/create-account screen from leaving movement keys "stuck".
 function clearMovementKeys(){
-  if(typeof keys!=="undefined"){
-    for(const k in keys) keys[k]=false;
-  }
+  if(typeof keys!=="undefined" && keys?.clear) keys.clear();
+  jumpQueued=false;
 }
 document.addEventListener("focusin",e=>{
   if(e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA")){
@@ -638,6 +641,7 @@ const authClient=window.supabase.createClient(AUTH_URL,AUTH_KEY,{
   }
 });
 let currentUsername="Player";
+let currentRole="player";
 
 const authScreen=document.getElementById("auth-screen");
 const earlyLogoutBtn=document.getElementById("logout-btn");
@@ -655,7 +659,21 @@ document.getElementById("show-login").onclick=showLogin;
 function cleanUsername(v){
   return v.trim().replace(/[^a-zA-Z0-9_-]/g,"").slice(0,20);
 }
+
+async function loadCurrentPlayerRole(user){
+  currentRole="player";
+  if(!user?.id) return currentRole;
+  const {data,error}=await authClient
+    .from("player_roles")
+    .select("role")
+    .eq("user_id",user.id)
+    .maybeSingle();
+  if(!error && data?.role==="owner") currentRole="owner";
+  return currentRole;
+}
+
 async function enterGame(user){
+  await loadCurrentPlayerRole(user);
   currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
   multiplayerLoggedIn=true;
   authScreen.style.display="none";
@@ -666,6 +684,15 @@ async function enterGame(user){
   if(typeof startMultiplayer==="function") startMultiplayer();
 }
 
+
+async function usernameAvailable(username){
+  const {data,error}=await authClient.rpc("is_username_available",{
+    requested_username: username
+  });
+  if(error) return {ok:null,error};
+  return {ok:data===true,error:null};
+}
+
 document.getElementById("signup-btn").onclick=async()=>{
   const username=cleanUsername(document.getElementById("signup-username").value);
   const email=document.getElementById("signup-email").value.trim();
@@ -674,9 +701,15 @@ document.getElementById("signup-btn").onclick=async()=>{
   if(!email){msg("Enter an email.");return;}
   if(password.length<6){msg("Password must be at least 6 characters.");return;}
   msg("Checking username...");
-  // `claim_username` is an atomic database RPC backed by a UNIQUE primary key.
-  // It prevents two accounts from successfully claiming the same normalized name.
-  const normalizedUsername=username.toLowerCase();
+  const availability=await usernameAvailable(username);
+  if(availability.ok===false){
+    msg("That username is already taken. Choose another username.");
+    return;
+  }
+  if(availability.ok===null){
+    msg("Could not check the username. Run USERNAME-AUTH-FIX.sql in Supabase first.");
+    return;
+  }
 
   msg("Creating account...");
   const {data,error}=await authClient.auth.signUp({
@@ -692,7 +725,7 @@ document.getElementById("signup-btn").onclick=async()=>{
     });
     if(claimError || claimed!==true){
       await authClient.auth.signOut();
-      msg("That username is already taken. Choose another username.");
+      msg("The username could not be claimed. If it still shows available, delete this newly-created test user in Supabase Authentication > Users, then try again.");
       return;
     }
     await authClient.auth.updateUser({data:{username}});
@@ -814,7 +847,7 @@ function startMultiplayer(){
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
  }).subscribe(async st=>{
    if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-   if(st==="SUBSCRIBED")await ch.track({id:myId,username:currentUsername,joined_at:Date.now()});
+   if(st==="SUBSCRIBED")await ch.track({id:myId,username:currentUsername, role:currentRole,joined_at:Date.now()});
  });
  let lastNet=0;
  let localLabel=null;
@@ -825,7 +858,7 @@ function startMultiplayer(){
      playerModel.add(localLabel);
    }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
 }

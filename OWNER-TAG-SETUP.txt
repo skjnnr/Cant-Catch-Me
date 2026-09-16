@@ -1,0 +1,11 @@
+OWNER TAG UPDATE
+
+The game reads public.player_roles after login using the authenticated Supabase user ID.
+
+Required database setup:
+- public.player_roles exists
+- RLS is enabled
+- authenticated users have SELECT access
+- owner accounts have role = 'owner'
+
+Owner assignments are controlled in Supabase, not by usernames in browser JavaScript.
