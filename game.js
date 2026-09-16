@@ -1006,6 +1006,7 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 
 async function showMainMenu(){
+  if(typeof dbLeaveQueue==='function') await dbLeaveQueue();
   roomCodeDisplay.style.display="none";
 
   // Fully disconnect from whichever public/private room the player was in.
@@ -1696,4 +1697,45 @@ setInterval(()=>{
   setInterval(()=>{
     if(board.style.display!=="none") window.refreshRoomLeaderboard();
   },350);
+})();
+
+
+// ===== DATABASE PUBLIC QUEUE =====
+const queueOverlay=document.getElementById("queue-overlay"),queueStatus=document.getElementById("queue-status"),
+queueCount=document.getElementById("queue-count"),queueTimer=document.getElementById("queue-timer"),
+roundLoadingOverlay=document.getElementById("round-loading-overlay");
+let dbMatchId=null,dbMatchCode=null,queuePoll=null,queueStarting=false;
+
+async function dbFindOrCreatePublicMatch(){
+ const map=String(pendingMap||"original").toLowerCase();
+ const {data,error}=await authClient.from("game_matches").select("*").eq("room_type","public").eq("queue_locked",false).in("status",["waiting","countdown"]).eq("map_name",map).order("created_at",{ascending:true}).limit(20);
+ if(error)throw error;
+ for(const m of data||[]){const r=await authClient.rpc("get_match_player_count",{requested_match:m.id});if(!r.error&&Number(r.data)<12)return m;}
+ const r=await authClient.rpc("create_public_match",{requested_map:map});if(r.error)throw r.error;return r.data;
+}
+async function dbJoinPublicQueue(){
+ const m=await dbFindOrCreatePublicMatch();
+ const r=await authClient.rpc("join_game_match",{requested_room_code:m.room_code,requested_username:currentUsername||"Player"});
+ if(r.error)throw r.error;if(!r.data?.success)throw new Error(r.data?.error||"Join failed");
+ dbMatchId=r.data.match_id;dbMatchCode=r.data.room_code;lobbyMode="public";lobbyCode=dbMatchCode;
+ if(roomCodeText)roomCodeText.textContent=dbMatchCode;if(roomTypeLabel)roomTypeLabel.textContent="PUBLIC ROOM CODE";
+ queueOverlay.style.display="flex";await dbRefreshQueue();queuePoll=setInterval(dbRefreshQueue,500);
+}
+async function dbRefreshQueue(){
+ if(!dbMatchId)return;
+ const mr=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
+ const pr=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
+ if(mr.error||pr.error)return;const m=mr.data,players=pr.data||[],n=players.length;
+ queueCount.textContent=n+" / 12 PLAYERS";
+ if(m.status==="waiting"){queueStatus.textContent="WAITING FOR PLAYERS";queueTimer.textContent="Minimum 6 players required";}
+ if(m.status==="countdown"){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0)authClient.rpc("lock_match_if_ready",{requested_match:dbMatchId});}
+ if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay.style.display="none";roundLoadingOverlay.style.display="flex";document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
+ if(m.status==="active"){queueOverlay.style.display="none";roundLoadingOverlay.style.display="flex";document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay.style.display="none";roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
+}
+async function dbLeaveQueue(){if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay.style.display="none";roundLoadingOverlay.style.display="none";}
+document.getElementById("queue-leave-btn")?.addEventListener("click",async()=>{await dbLeaveQueue();await showMainMenu();});
+
+(function(){
+ const old=document.getElementById("join-public");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
+ btn.addEventListener("click",async()=>{const t=btn.textContent;btn.disabled=true;btn.textContent="JOINING QUEUE...";try{lobbyChoiceScreen.style.display="none";await stopCurrentLobbyChannel();multiplayerLoggedIn=true;await dbJoinPublicQueue();}catch(e){console.error(e);lobbyChoiceScreen.style.display="flex";alert("Could not join public queue: "+(e.message||e));}finally{btn.disabled=false;btn.textContent=t;}});
 })();

@@ -205,3 +205,7 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
 #room-leaderboard.in-room{display:block !important;}
 #room-leaderboard:not(.in-room){display:none !important;}
 #leaderboard-title,#leaderboard-names,#leaderboard-count{color:#fff !important;}
+
+#queue-overlay,#round-loading-overlay{display:none;position:fixed;inset:0;z-index:200000;background:rgba(5,9,18,.9);align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif}
+.queue-card,.round-card{width:min(520px,88vw);text-align:center;padding:34px 30px;border-radius:16px;background:rgba(13,28,62,.97);border:2px solid rgba(255,255,255,.75)}
+.queue-logo{font-size:26px;font-weight:900;margin-bottom:28px}#queue-status,#round-loading-title{font-size:30px;font-weight:900}#queue-count{font-size:22px;font-weight:800;margin-top:18px}#queue-timer{font-size:20px;margin-top:12px}.queue-note{opacity:.75;margin-top:10px}#queue-leave-btn{margin-top:26px;padding:12px 22px;font-weight:800}
