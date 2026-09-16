@@ -1809,7 +1809,14 @@ async function dbRefreshQueue(){
     if(msg)msg.textContent="Starting round...";
   }
 },700);}
- if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
+ if(m.status==="active"){
+ queueOverlay && (queueOverlay.style.display="none");
+ if(queuePoll){clearInterval(queuePoll);queuePoll=null;}
+ roomCodeDisplay.style.display="block";
+ window.forceRoomLeaderboard?.(true);
+ if(startScreen)startScreen.style.display="none";
+ await beginBombGameplay();
+}
 }
 async function dbLeaveQueue(){
  if(typeof stopQueuePresence==="function") await stopQueuePresence();
@@ -1852,6 +1859,8 @@ async function beginBombGameplay(){
 async function syncBombGameplay(){
  const m=await fetchMatchState();if(!m)return;
  const players=await fetchMatchPlayers();
+ const {data:{session}}=await authClient.auth.getSession();
+ const localUserId=session?.user?.id||null;
  const holder=players.find(p=>p.user_id===m.bomb_holder);
  bombOwnerText.textContent="BOMB: "+(holder?.username||"Selecting...");
 
@@ -1862,7 +1871,7 @@ async function syncBombGameplay(){
    // first 5 seconds are the runners' head start.
    headStartUntil=Date.now()+5000;
    roundLoadingOverlay.style.display="flex";
-   const meHas=m.bomb_holder===authUser?.id || m.bomb_holder===myId;
+   const meHas=m.bomb_holder===localUserId;
    document.getElementById("round-loading-title").textContent="ROUND "+m.round_number;
    document.getElementById("round-loading-text").textContent=meHas
       ?"YOU START WITH THE BOMB — WAIT 5 SECONDS!"
@@ -1879,22 +1888,22 @@ async function syncBombGameplay(){
      setTimeout(()=>{bombDetonationRequested=false;syncBombGameplay();},400);
    }
    // Attempt tag only if this client is the authoritative current holder.
-   const myUid=authUser?.id;
+   const myUid=localUserId;
    if(myUid&&m.bomb_holder===myUid&&Date.now()>=headStartUntil) attemptBombTag(players);
  } else if(m.status==="between_rounds"){
    bombHud.style.display="none";
-   const me=players.find(p=>p.user_id===authUser?.id);
+   const me=players.find(p=>p.user_id===localUserId);
    if(me?.eliminated){showBombResult(false);}
    else if(!queueStarting){
      queueStarting=true;
      roundLoadingOverlay.style.display="flex";
      document.getElementById("round-loading-title").textContent="NEXT ROUND";
      document.getElementById("round-loading-text").textContent="Selecting a new bomb holder...";
-     setTimeout(async()=>{await authClient.rpc("start_bomb_round",{requested_match:dbMatchId});queueStarting=false;},1800);
+     setTimeout(async()=>{await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});queueStarting=false;},1800);
    }
  } else if(m.status==="finished"){
    bombHud.style.display="none";
-   showBombResult(m.winner_id===authUser?.id);
+   showBombResult(m.winner_id===localUserId);
  }
 }
 

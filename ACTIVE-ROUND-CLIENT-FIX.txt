@@ -1,0 +1,6 @@
+Fixes the client staying on ROUND LOADING after Supabase is already active.
+- active queue state now calls beginBombGameplay()
+- removes dependency on undeclared authUser in bomb gameplay
+- gets the logged-in user ID from Supabase session
+- uses start_bomb_round_safe between rounds
+No new SQL is required if ROUND-START-FIX.sql was already run.
