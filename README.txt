@@ -1,23 +1,13 @@
-CAN'T CATCH ME — STAGE 2
+CAN'T CATCH ME — STAGE 2 FIXED
 
-Included:
-- Larger 3D map
-- Roads and sidewalks
-- Buildings and warehouse areas
-- Crates, cover walls, sheds
-- Trees and bushes
-- Outer boundaries
-- Player collision with map objects
-- First-person mouse look
-- WASD movement
-- Shift sprint
+This version fixes first-person WASD movement:
+- W moves forward in the direction you are looking.
+- S moves backward.
+- A moves left.
+- D moves right.
+- Diagonal movement is normalized.
+- Movement slides along walls instead of getting stuck.
+- Shift still sprints.
 
-GitHub Pages:
-1. Upload index.html, style.css, and game.js to your repository.
-2. Replace the Stage 1 files if they are already there.
-3. Commit the changes.
-4. Open Settings > Pages.
-5. Deploy from the main branch and / (root).
-6. Open the GitHub Pages URL.
-
-The game uses Three.js from cdnjs, so an internet connection is needed.
+Replace the game.js file in your GitHub repository with this one.
+Or replace all three files with this ZIP.
