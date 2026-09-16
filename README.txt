@@ -1,22 +1,18 @@
-CAN'T CATCH ME — CLEAN MOVEMENT FIX
+CAN'T CATCH ME — STAGE 2 REBUILT
 
-This ZIP is a clean rebuild of game.js based on the Stage 3 folder.
+This rebuild replaces the previous movement controller.
 
 Controls:
-W A S D = move
-SHIFT = sprint
+W = forward
+S = backward
+A = left
+D = right
+Shift = sprint
 Mouse = look around
-ESC = settings
-Settings includes mouse sensitivity.
+ESC = unlock mouse
 
 IMPORTANT:
-Replace the old game.js in your GitHub repository with the game.js in this ZIP.
-Keep index.html and style.css from this folder.
+Replace the old index.html, style.css, and game.js files in GitHub with these files.
 
-After updating GitHub Pages:
-1. Open the site.
-2. Press Ctrl + Shift + R to force-refresh.
-3. Click PLAY.
-4. Press W, A, S, or D.
-
-The movement code is independent of pointer lock, so WASD should still work even if Chrome does not lock the mouse.
+GitHub Pages:
+Settings > Pages > Deploy from branch > main > / (root).

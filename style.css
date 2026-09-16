@@ -5,73 +5,8 @@ canvas{display:block}
 #logo{font-size:28px;font-weight:900;letter-spacing:3px}
 #help{margin-top:7px;font-size:14px;opacity:.85}
 #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:10;color:#fff;font-size:25px;pointer-events:none;text-shadow:0 0 5px #000}
-
-#start-screen,#settings{
-  position:fixed;
-  inset:0;
-  z-index:20;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:rgba(0,0,0,.9);
-  color:#fff;
-  text-align:center;
-}
-#settings{display:none;background:rgba(0,0,0,.7);z-index:30}
-
+#start-screen{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.9);color:#fff;text-align:center}
 #start-screen h1{font-size:clamp(42px,8vw,76px);margin:0 0 10px;letter-spacing:6px}
 #start-screen p{font-size:20px;opacity:.8}
-#start-button,#resume-button{
-  margin-top:25px;
-  padding:15px 48px;
-  border:0;
-  border-radius:8px;
-  background:#fff;
-  color:#000;
-  font-size:20px;
-  font-weight:bold;
-  cursor:pointer;
-}
-#start-button:hover,#resume-button:hover{transform:scale(1.05)}
-
-#settings-panel{
-  position:relative;
-  width:min(500px,90vw);
-  padding:35px;
-  border-radius:14px;
-  background:#17191d;
-  box-shadow:0 15px 60px rgba(0,0,0,.6);
-  text-align:left;
-}
-#settings-panel h2{
-  margin:0 0 30px;
-  font-size:34px;
-}
-#close-settings{
-  position:absolute;
-  top:10px;
-  right:14px;
-  border:0;
-  background:transparent;
-  color:#fff;
-  font-size:35px;
-  cursor:pointer;
-}
-#settings-panel label{
-  display:block;
-  font-size:18px;
-  font-weight:bold;
-  margin-bottom:12px;
-}
-.slider-row{display:flex;align-items:center;gap:14px}
-#sensitivity{width:100%;cursor:pointer}
-#sensitivity-value{
-  min-width:48px;
-  text-align:center;
-  font-weight:bold;
-}
-.settings-tip{
-  margin:18px 0 0;
-  color:#bfc3ca;
-  line-height:1.5;
-}
+#start-button{margin-top:25px;padding:15px 48px;border:0;border-radius:8px;background:#fff;color:#000;font-size:20px;font-weight:bold;cursor:pointer}
+#start-button:hover{transform:scale(1.05)}

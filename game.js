@@ -1,606 +1,299 @@
-// CAN'T CATCH ME — Stage 3 clean rebuild
-// WASD movement is handled globally and does NOT depend on pointer lock.
+// CAN'T CATCH ME — Stage 2 rebuilt
+// Movement is deliberately implemented without Object3D.translateX/translateZ.
+// The player has separate yaw/pitch values, and movement is calculated directly
+// from the yaw angle. This makes WASD predictable and camera-relative.
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec9ee);
-scene.fog = new THREE.Fog(0x8ec9ee, 70, 240);
+scene.fog = new THREE.Fog(0x8ec9ee, 35, 125);
 
 const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
   0.1,
-  800
+  1000
 );
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 // ---------- LIGHTING ----------
-const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-sun.position.set(50, 90, 35);
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(25, 40, 15);
 sun.castShadow = true;
-sun.shadow.mapSize.width = 2048;
-sun.shadow.mapSize.height = 2048;
 scene.add(sun);
-
-scene.add(new THREE.HemisphereLight(0xdaf1ff, 0x405533, 0.8));
+scene.add(new THREE.HemisphereLight(0xbfe8ff, 0x48603b, 0.7));
 
 // ---------- MATERIALS ----------
-const grass = new THREE.MeshStandardMaterial({ color: 0x42a94b });
-const road = new THREE.MeshStandardMaterial({ color: 0x59636e });
-const sidewalk = new THREE.MeshStandardMaterial({ color: 0x9a9da0 });
-const wall = new THREE.MeshStandardMaterial({ color: 0x7d8388 });
-const wallDark = new THREE.MeshStandardMaterial({ color: 0x4e555b });
-const roof = new THREE.MeshStandardMaterial({ color: 0x343a40 });
-const wood = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
-const crateMat = new THREE.MeshStandardMaterial({ color: 0x9b6938 });
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x684225 });
-const leavesMat = new THREE.MeshStandardMaterial({ color: 0x246b31 });
-const metal = new THREE.MeshStandardMaterial({ color: 0x646b72, metalness: 0.4, roughness: 0.5 });
-const glass = new THREE.MeshStandardMaterial({
-  color: 0x4d8296,
-  transparent: true,
-  opacity: 0.65
-});
-const yellow = new THREE.MeshStandardMaterial({
-  color: 0xd4ad39,
-  emissive: 0x3b2c05,
-  emissiveIntensity: 0.2
-});
+const grass = new THREE.MeshStandardMaterial({color:0x3f873f});
+const road = new THREE.MeshStandardMaterial({color:0x41464b});
+const wall = new THREE.MeshStandardMaterial({color:0x777b80});
+const darkWall = new THREE.MeshStandardMaterial({color:0x50545a});
+const wood = new THREE.MeshStandardMaterial({color:0x8b552d});
+const roof = new THREE.MeshStandardMaterial({color:0x363a40});
+const crateMat = new THREE.MeshStandardMaterial({color:0x9b6938});
+const treeMat = new THREE.MeshStandardMaterial({color:0x174c25});
+const trunkMat = new THREE.MeshStandardMaterial({color:0x684225});
 
-// ---------- COLLISION ----------
 const colliders = [];
 
-function addCollider(x, z, width, depth) {
-  colliders.push({
-    minX: x - width / 2,
-    maxX: x + width / 2,
-    minZ: z - depth / 2,
-    maxZ: z + depth / 2
-  });
+function box(x,y,z,w,h,d,mat,collision=true){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+
+  if(collision){
+    colliders.push({
+      minX:x-w/2,
+      maxX:x+w/2,
+      minZ:z-d/2,
+      maxZ:z+d/2
+    });
+  }
+  return m;
 }
 
-function addBox(x, y, z, width, height, depth, material, collision = true) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    material
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-
-  if (collision) addCollider(x, z, width, depth);
-  return mesh;
-}
-
-function addCylinder(x, y, z, radius, height, material, collision = true) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, height, 16),
-    material
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-
-  if (collision) addCollider(x, z, radius * 2, radius * 2);
-  return mesh;
+function cylinder(x,y,z,r,h,mat){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16),mat);
+  m.position.set(x,y,z);
+  m.castShadow = true;
+  scene.add(m);
+  return m;
 }
 
 // ---------- MAP ----------
-const MAP = 220;
-
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(MAP, MAP),
+  new THREE.PlaneGeometry(120,120),
   grass
 );
-ground.rotation.x = -Math.PI / 2;
+ground.rotation.x = -Math.PI/2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// Roads
-addBox(0, 0.02, 0, 18, 0.04, MAP, road, false);
-addBox(0, 0.025, 0, MAP, 0.04, 18, road, false);
-addBox(-70, 0.03, 0, 12, 0.05, MAP, road, false);
-addBox(70, 0.03, 0, 12, 0.05, MAP, road, false);
-addBox(0, 0.035, -70, MAP, 0.05, 12, road, false);
-addBox(0, 0.035, 70, MAP, 0.05, 12, road, false);
+// roads
+box(0,.02,0,12,.04,100,road,false);
+box(0,.03,0,100,.04,12,road,false);
 
-// Sidewalks
-addBox(-15, 0.05, 0, 4, 0.08, MAP, sidewalk, false);
-addBox(15, 0.05, 0, 4, 0.08, MAP, sidewalk, false);
-addBox(0, 0.055, -15, MAP, 0.08, 4, sidewalk, false);
-addBox(0, 0.055, 15, MAP, 0.08, 4, sidewalk, false);
+// boundary
+box(0,2.5,-58,116,5,1,darkWall);
+box(0,2.5,58,116,5,1,darkWall);
+box(-58,2.5,0,1,5,116,darkWall);
+box(58,2.5,0,1,5,116,darkWall);
 
-// Boundary
-const B = 108;
-addBox(0, 3, -B, 216, 6, 2, wallDark, true);
-addBox(0, 3, B, 216, 6, 2, wallDark, true);
-addBox(-B, 3, 0, 2, 6, 216, wallDark, true);
-addBox(B, 3, 0, 2, 6, 216, wallDark, true);
+// buildings
+box(-28,2.5,-28,20,5,18,wall);
+box(-28,5.4,-28,21,.8,19,roof,false);
 
-// ---------- BUILDINGS ----------
-function building(x, z, width, depth, height = 7) {
-  const thickness = 0.8;
-  const doorWidth = 5;
+box(28,3.5,-28,20,7,20,darkWall);
+box(28,7.5,-28,21,.8,21,roof,false);
 
-  // Floor
-  addBox(x, 0.08, z, width - 0.4, 0.12, depth - 0.4, wallDark, false);
+box(-28,2.5,28,20,5,18,wall);
+box(-28,5.4,28,21,.8,19,roof,false);
 
-  // Back
-  addBox(
-    x,
-    height / 2,
-    z - depth / 2 + thickness / 2,
-    width,
-    height,
-    thickness,
-    wall
-  );
+box(28,2.5,29,20,5,16,wall);
+box(28,5.4,29,21,.8,17,roof,false);
 
-  // Left / right
-  addBox(
-    x - width / 2 + thickness / 2,
-    height / 2,
-    z,
-    thickness,
-    height,
-    depth,
-    wall
-  );
+// hiding cover
+box(-2,1.5,-14,8,3,1,wood);
+box(3,1.5,14,9,3,1,wood);
 
-  addBox(
-    x + width / 2 - thickness / 2,
-    height / 2,
-    z,
-    thickness,
-    height,
-    depth,
-    wall
-  );
-
-  // Front split around a real opening.
-  const frontZ = z + depth / 2 - thickness / 2;
-  const sideWidth = (width - doorWidth) / 2;
-
-  addBox(
-    x - width / 2 + sideWidth / 2,
-    height / 2,
-    frontZ,
-    sideWidth,
-    height,
-    thickness,
-    wall
-  );
-
-  addBox(
-    x + width / 2 - sideWidth / 2,
-    height / 2,
-    frontZ,
-    sideWidth,
-    height,
-    thickness,
-    wall
-  );
-
-  // Roof
-  addBox(x, height + 0.35, z, width + 0.5, 0.7, depth + 0.5, roof, false);
-
-  // Door frame / sign
-  addBox(x, height - 0.7, frontZ - 0.05, doorWidth + 0.3, 0.25, 0.2, yellow, false);
-
-  // Interior cover
-  addBox(x - 3, 1, z - 2, 3.5, 2, 1.2, wood, true);
-  addBox(x + 3, 1, z + 2, 2, 2, 2, crateMat, true);
-}
-
-building(-48, -48, 30, 25, 7);
-building(48, -48, 32, 27, 8);
-building(-48, 48, 28, 30, 7);
-building(48, 48, 34, 26, 8);
-building(-82, -38, 24, 28, 6.5);
-building(82, 38, 25, 30, 7);
-
-// ---------- OBJECTS ----------
-function crates(x, z, count = 4) {
-  for (let i = 0; i < count; i++) {
-    const ox = (i % 2) * 2.4 - 1.2;
-    const oz = Math.floor(i / 2) * 2.4 - 1.2;
-    addBox(x + ox, 1, z + oz, 2.2, 2, 2.2, crateMat, true);
+function crates(x,z,count){
+  for(let i=0;i<count;i++){
+    const ox=(i%2)*2.2-1.1;
+    const oy=Math.floor(i/2)*1.8+.9;
+    box(x+ox,oy,z,2.2,1.8,2.2,crateMat);
   }
 }
+crates(-12,-3,4);
+crates(12,3,4);
+crates(-12,14,4);
+crates(13,14,4);
+crates(-12,-14,4);
+crates(14,-14,4);
 
-[
-  [-28, -35], [-8, -42], [27, -35], [75, -25],
-  [-30, 31], [30, 35], [-78, 25], [78, -65],
-  [-80, -75], [80, 75]
-].forEach(([x, z]) => crates(x, z, 4));
-
-function fence(x, z, width, depth) {
-  addBox(x, 1.4, z - depth / 2, width, 2.8, 0.35, woodDark, true);
-  addBox(x, 1.4, z + depth / 2, width, 2.8, 0.35, woodDark, true);
-  addBox(x - width / 2, 1.4, z, 0.35, 2.8, depth, woodDark, true);
-  addBox(x + width / 2, 1.4, z, 0.35, 2.8, depth, woodDark, true);
-}
-
-fence(-30, -78, 16, 8);
-fence(30, 78, 16, 8);
-
-function bench(x, z, rotation = 0) {
-  const group = new THREE.Group();
-
-  const seat = new THREE.Mesh(
-    new THREE.BoxGeometry(3.5, 0.35, 1),
-    wood
-  );
-  seat.position.y = 1.1;
-  group.add(seat);
-
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 1.1, 0.3),
-      metal
-    );
-    leg.position.set(side * 1.2, 0.55, 0);
-    group.add(leg);
-  }
-
-  group.position.set(x, 0, z);
-  group.rotation.y = rotation;
-  group.traverse(o => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
-  });
-  scene.add(group);
-
-  // Simple conservative collision box.
-  addCollider(x, z, 4.1, 1.5);
-}
-
-bench(-28, 8, Math.PI / 2);
-bench(28, -8, Math.PI / 2);
-bench(-60, 20, 0);
-bench(60, -20, 0);
-
-function lamp(x, z) {
-  addCylinder(x, 3, z, 0.18, 6, metal, true);
-
-  const bulb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 12, 8),
-    new THREE.MeshStandardMaterial({
-      color: 0xffffcc,
-      emissive: 0xffff99,
-      emissiveIntensity: 0.8
-    })
-  );
-  bulb.position.set(x, 6.1, z);
-  scene.add(bulb);
-
-  const light = new THREE.PointLight(0xffe9b0, 0.65, 18);
-  light.position.set(x, 6, z);
-  scene.add(light);
-}
-
-[
-  [-18, -18], [18, -18], [-18, 18], [18, 18],
-  [-60, 0], [60, 0], [0, -60], [0, 60]
-].forEach(([x, z]) => lamp(x, z));
-
-function car(x, z, rotation = 0) {
-  const group = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 1.4, 3),
-    metal
-  );
-  body.position.y = 1;
-  group.add(body);
-
-  const top = new THREE.Mesh(
-    new THREE.BoxGeometry(3.3, 1.2, 2.4),
-    glass
-  );
-  top.position.y = 1.9;
-  group.add(top);
-
-  group.position.set(x, 0, z);
-  group.rotation.y = rotation;
-
-  group.traverse(o => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
-  });
-
-  scene.add(group);
-  addCollider(x, z, 6.5, 3.5);
-}
-
-car(-31, -9, Math.PI / 2);
-car(31, 9, Math.PI / 2);
-car(-92, 12);
-car(92, -12, Math.PI);
-
-// ---------- TREES ----------
-function tree(x, z, scale = 1) {
-  addCylinder(x, 2 * scale, z, 0.7 * scale, 4 * scale, trunkMat, true);
-
+// trees
+function tree(x,z,s=1){
+  cylinder(x,1.8*s,z,.55*s,3.6*s,trunkMat);
   const leaves = new THREE.Mesh(
-    new THREE.SphereGeometry(2.7 * scale, 16, 12),
-    leavesMat
+    new THREE.SphereGeometry(2.2*s,16,12),
+    treeMat
   );
-  leaves.position.set(x, 5 * scale, z);
-  leaves.castShadow = true;
-  leaves.receiveShadow = true;
+  leaves.position.set(x,4.1*s,z);
+  leaves.castShadow=true;
   scene.add(leaves);
-
-  addCollider(x, z, 3 * scale, 3 * scale);
 }
 
 [
-  [-95, -90, 1.4], [-70, -92, 1.1], [-45, -92, 1.3], [-20, -92, 1],
-  [20, -92, 1.2], [45, -92, 1.4], [70, -92, 1.1], [95, -90, 1.3],
-  [-94, 90, 1.3], [-65, 92, 1.1], [-40, 92, 1.4], [-18, 92, 1],
-  [18, 92, 1.2], [42, 92, 1.3], [70, 92, 1.1], [96, 90, 1.4],
-  [-95, -55, 1.1], [-95, -25, 1.3], [-95, 25, 1.2], [-95, 55, 1.4],
-  [95, -55, 1.2], [95, -25, 1.1], [95, 25, 1.4], [95, 55, 1.2],
-  [-75, -18, 1], [-75, 18, 1], [-45, -72, 1.1], [45, -72, 1.2],
-  [-45, 72, 1.2], [45, 72, 1.1], [76, -72, 1.1], [-76, 72, 1.2]
-].forEach(v => tree(v[0], v[1], v[2]));
+[-48,-12,1.2],[-46,18,1],[-35,45,1.2],[-12,43,1],
+[12,43,1.2],[38,45,1],[48,22,1.2],[47,-18,1],
+[39,-43,1.1],[10,-45,1.2],[-15,-44,1],[-40,-40,1.1]
+].forEach(v=>tree(...v));
 
-// ---------- PLAYER ----------
+// ---------- PLAYER CONTROLLER ----------
+// Player position is just x/z numbers.
+// Camera is NOT parented to a rotating player object.
+// This removes the source of the previous movement problem.
+
 const player = {
   x: 0,
   y: 1.7,
-  z: 72,
+  z: 45,
   yaw: 0,
   pitch: 0,
-  radius: 0.48
+  radius: .45
 };
 
-camera.position.set(player.x, player.y, player.z);
+camera.position.set(player.x,player.y,player.z);
 
-// ---------- INPUT ----------
-// IMPORTANT: movement is tracked with window listeners.
-// It works whether or not the mouse is locked.
-const keys = {
-  w: false,
-  a: false,
-  s: false,
-  d: false,
-  shift: false
-};
+const keys = Object.create(null);
 
-let gameStarted = false;
-let settingsOpen = false;
-let sensitivity = 2.2;
-
-function keyName(e) {
-  const code = e.code || "";
-  const key = (e.key || "").toLowerCase();
-
-  if (code === "KeyW" || key === "w") return "w";
-  if (code === "KeyA" || key === "a") return "a";
-  if (code === "KeyS" || key === "s") return "s";
-  if (code === "KeyD" || key === "d") return "d";
-  if (code === "ShiftLeft" || code === "ShiftRight" || key === "shift") return "shift";
-  return "";
-}
-
-function setKey(e, pressed) {
-  const k = keyName(e);
-  if (!k) return;
-
-  keys[k] = pressed;
-  e.preventDefault();
-}
-
-window.addEventListener("keydown", e => {
-  if (e.code === "Escape") {
+window.addEventListener("keydown",(e)=>{
+  keys[e.code]=true;
+  if(["KeyW","KeyA","KeyS","KeyD","ShiftLeft","ShiftRight"].includes(e.code)){
     e.preventDefault();
-    if (gameStarted) toggleSettings();
-    return;
   }
-  setKey(e, true);
-}, true);
-
-window.addEventListener("keyup", e => {
-  setKey(e, false);
-}, true);
-
-window.addEventListener("blur", clearKeys);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearKeys();
 });
 
-function clearKeys() {
-  keys.w = false;
-  keys.a = false;
-  keys.s = false;
-  keys.d = false;
-  keys.shift = false;
-}
-
-// ---------- SETTINGS ----------
-const settingsEl = document.getElementById("settings");
-const slider = document.getElementById("sensitivity");
-const sensitivityValue = document.getElementById("sensitivity-value");
-
-function updateSensitivity() {
-  sensitivity = Number(slider.value);
-  sensitivityValue.textContent = sensitivity.toFixed(1);
-}
-
-slider.addEventListener("input", updateSensitivity);
-updateSensitivity();
-
-function toggleSettings() {
-  settingsOpen = !settingsOpen;
-  settingsEl.style.display = settingsOpen ? "flex" : "none";
-  clearKeys();
-
-  if (settingsOpen) {
-    document.exitPointerLock?.();
-  }
-}
-
-document.getElementById("close-settings").addEventListener("click", () => {
-  settingsOpen = false;
-  settingsEl.style.display = "none";
-  clearKeys();
+window.addEventListener("keyup",(e)=>{
+  keys[e.code]=false;
 });
 
-document.getElementById("resume-button").addEventListener("click", () => {
-  settingsOpen = false;
-  settingsEl.style.display = "none";
-  clearKeys();
-  if (gameStarted) document.body.requestPointerLock?.();
+window.addEventListener("blur",()=>{
+  for(const k in keys) keys[k]=false;
 });
 
-// ---------- MOUSE LOOK ----------
-document.addEventListener("mousemove", e => {
-  if (!gameStarted || settingsOpen) return;
-  if (document.pointerLockElement !== document.body) return;
+// ---------- MOUSE ----------
+document.addEventListener("mousemove",(e)=>{
+  if(document.pointerLockElement !== document.body) return;
 
-  player.yaw -= e.movementX * sensitivity * 0.0015;
-  player.pitch -= e.movementY * sensitivity * 0.0015;
+  player.yaw -= e.movementX * .0022;
+  player.pitch -= e.movementY * .0022;
+
   player.pitch = THREE.MathUtils.clamp(
     player.pitch,
-    -Math.PI / 2 + 0.05,
-    Math.PI / 2 - 0.05
+    -Math.PI/2 + .05,
+    Math.PI/2 - .05
   );
 });
 
 // ---------- COLLISION ----------
-function collides(x, z) {
-  for (const c of colliders) {
-    if (
+function collides(x,z){
+  for(const c of colliders){
+    if(
       x + player.radius > c.minX &&
       x - player.radius < c.maxX &&
       z + player.radius > c.minZ &&
       z - player.radius < c.maxZ
-    ) {
+    ){
       return true;
     }
   }
   return false;
 }
 
-function movePlayer(dx, dz) {
-  // Axis-separated movement lets the player slide along walls.
-  const nextX = THREE.MathUtils.clamp(player.x + dx, -106.5, 106.5);
-  if (!collides(nextX, player.z)) player.x = nextX;
+// Move on each axis independently.
+// This allows the player to slide along walls.
+function tryMove(dx,dz){
+  const nx=player.x+dx;
+  if(!collides(nx,player.z)){
+    player.x=nx;
+  }
 
-  const nextZ = THREE.MathUtils.clamp(player.z + dz, -106.5, 106.5);
-  if (!collides(player.x, nextZ)) player.z = nextZ;
+  const nz=player.z+dz;
+  if(!collides(player.x,nz)){
+    player.z=nz;
+  }
+
+  player.x=THREE.MathUtils.clamp(player.x,-56+player.radius,56-player.radius);
+  player.z=THREE.MathUtils.clamp(player.z,-56+player.radius,56-player.radius);
 }
 
-function updateMovement(dt) {
-  if (!gameStarted || settingsOpen) return;
+// ---------- WASD ----------
+function updateMovement(){
+  let forward=0;
+  let strafe=0;
 
-  let forward = 0;
-  let strafe = 0;
+  // W/S controls forward/backward.
+  if(keys["KeyW"]) forward += 1;
+  if(keys["KeyS"]) forward -= 1;
 
-  if (keys.w) forward += 1;
-  if (keys.s) forward -= 1;
-  if (keys.a) strafe -= 1;
-  if (keys.d) strafe += 1;
+  // A/D controls left/right.
+  if(keys["KeyA"]) strafe -= 1;
+  if(keys["KeyD"]) strafe += 1;
 
-  if (forward === 0 && strafe === 0) return;
+  if(forward===0 && strafe===0) return;
 
-  const length = Math.hypot(forward, strafe);
-  forward /= length;
-  strafe /= length;
+  // Normalize so diagonal isn't faster.
+  const len=Math.hypot(forward,strafe);
+  forward/=len;
+  strafe/=len;
 
-  const speed = keys.shift ? 11 : 6;
+  const speed=(keys["ShiftLeft"]||keys["ShiftRight"]) ? .20 : .115;
 
-  // Camera-relative movement.
-  const forwardX = -Math.sin(player.yaw);
-  const forwardZ = -Math.cos(player.yaw);
-  const rightX = Math.cos(player.yaw);
-  const rightZ = -Math.sin(player.yaw);
+  // Camera's horizontal forward vector from yaw.
+  const forwardX=-Math.sin(player.yaw);
+  const forwardZ=-Math.cos(player.yaw);
 
-  const dx = (
-    forwardX * forward +
-    rightX * strafe
-  ) * speed * dt;
+  // Camera's horizontal right vector.
+  const rightX=Math.cos(player.yaw);
+  const rightZ=-Math.sin(player.yaw);
 
-  const dz = (
-    forwardZ * forward +
-    rightZ * strafe
-  ) * speed * dt;
+  const dx=(forwardX*forward + rightX*strafe)*speed;
+  const dz=(forwardZ*forward + rightZ*strafe)*speed;
 
-  movePlayer(dx, dz);
+  tryMove(dx,dz);
 }
 
 // ---------- CAMERA ----------
-function updateCamera() {
-  camera.position.set(player.x, player.y, player.z);
+function updateCamera(){
+  camera.position.set(player.x,player.y,player.z);
 
-  const lookDistance = 10;
-  const cosPitch = Math.cos(player.pitch);
+  // Look direction is calculated from yaw/pitch.
+  const lookDistance=10;
 
   const targetX =
-    player.x - Math.sin(player.yaw) * cosPitch * lookDistance;
+    player.x -
+    Math.sin(player.yaw) *
+    Math.cos(player.pitch) *
+    lookDistance;
 
   const targetY =
-    player.y + Math.sin(player.pitch) * lookDistance;
+    player.y +
+    Math.sin(player.pitch) *
+    lookDistance;
 
   const targetZ =
-    player.z - Math.cos(player.yaw) * cosPitch * lookDistance;
+    player.z -
+    Math.cos(player.yaw) *
+    Math.cos(player.pitch) *
+    lookDistance;
 
-  camera.lookAt(targetX, targetY, targetZ);
+  camera.lookAt(targetX,targetY,targetZ);
 }
 
 // ---------- START ----------
-const startScreen = document.getElementById("start-screen");
-const startButton = document.getElementById("start-button");
-
-startButton.addEventListener("click", () => {
-  gameStarted = true;
-  settingsOpen = false;
-  settingsEl.style.display = "none";
-  startScreen.style.display = "none";
-  clearKeys();
-
-  // Pointer lock is only for mouse look.
-  // WASD continues to work even if the browser refuses pointer lock.
-  document.body.requestPointerLock?.();
-});
-
-// Clicking the game area re-locks the mouse after it was released.
-renderer.domElement.addEventListener("click", () => {
-  if (gameStarted && !settingsOpen) {
-    document.body.requestPointerLock?.();
-  }
+document.getElementById("start-button").addEventListener("click",()=>{
+  document.getElementById("start-screen").style.display="none";
+  document.body.requestPointerLock();
 });
 
 // ---------- LOOP ----------
-let previousTime = performance.now();
-
-function animate(now) {
+function animate(){
   requestAnimationFrame(animate);
-
-  const dt = Math.min((now - previousTime) / 1000, 0.05);
-  previousTime = now;
-
-  updateMovement(dt);
+  updateMovement();
   updateCamera();
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 
-requestAnimationFrame(animate);
+animate();
 
-// ---------- RESIZE ----------
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+window.addEventListener("resize",()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(window.innerWidth,window.innerHeight);
 });
