@@ -75,12 +75,41 @@
     </div>
   </div>
 </div>
+
+<div id="lobby-choice-screen">
+  <div class="lobby-choice-card">
+    <h2>CHOOSE LOBBY</h2>
+    <p>Join public matchmaking or use a private code.</p>
+    <button id="join-public">JOIN PUBLIC</button>
+    <button id="private-lobby-option">PRIVATE CODE</button>
+    <button id="lobby-choice-back">BACK</button>
+  </div>
+</div>
+
+<div id="private-code-screen">
+  <div class="lobby-choice-card">
+    <h2>PRIVATE LOBBY</h2>
+    <p>Create a room or enter a friend's code.</p>
+    <button id="create-private">CREATE PRIVATE CODE</button>
+    <div class="private-divider">OR</div>
+    <input id="private-code-input" maxlength="6" autocomplete="off" placeholder="ENTER 6-DIGIT CODE">
+    <button id="join-private">JOIN PRIVATE CODE</button>
+    <div id="private-code-message"></div>
+    <button id="private-code-back">BACK</button>
+  </div>
+</div>
+
+<div id="room-code-display"><span id="room-type-label">PUBLIC</span><b id="room-code-text">PUBLIC</b></div>
 <div id="loading-screen">
   <div class="loading-box">
     <div class="loading-logo">CAN'T CATCH ME</div>
     <h2 id="loading-map-name">LOADING ORIGINAL</h2>
     <div class="loading-track"><div id="loading-bar"></div></div>
     <div id="loading-percent">0%</div>
+    <div class="loading-controls">
+      <b>CONTROLS</b>
+      <span>WASD Move • Space Jump • Shift Sprint • H Third Person • ESC Settings</span>
+    </div>
   </div>
 </div>
 

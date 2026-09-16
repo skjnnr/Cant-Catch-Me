@@ -1,0 +1,9 @@
+Lobby system:
+- PLAY opens PUBLIC / PRIVATE choice.
+- Public uses shared public-1 Supabase Realtime channel.
+- Private creates or joins a six-character room code and uses a separate Realtime channel.
+- Room type/code displays top-left during gameplay.
+- Old top-left title/control HUD is hidden.
+- Controls are shown on the loading screen.
+- Back to Main Menu leaves the current room.
+Note: private codes are room identifiers, not passwords; anyone who knows a code can join it.

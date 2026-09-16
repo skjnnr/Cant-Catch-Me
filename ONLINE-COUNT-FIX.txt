@@ -1,0 +1,4 @@
+Fixed main-menu online count.
+The menu previously tried to read #player-count, which does not exist.
+It now reads Supabase Presence directly, with #mp-count as a fallback.
+The menu count refreshes on Presence sync, after subscribing, and every second.

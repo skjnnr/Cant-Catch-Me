@@ -907,6 +907,8 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 
 function showMainMenu(){
+  roomCodeDisplay.style.display="none";
+  stopCurrentLobbyChannel();
   started=false;
   settingsOpen=false;
   keys.clear();
@@ -933,7 +935,8 @@ document.getElementById("menu-select")?.addEventListener("click",()=>{
   document.querySelector(".ccm-map-panel")?.scrollIntoView({behavior:"smooth",block:"center"});
 });
 document.getElementById("menu-play")?.addEventListener("click",()=>{
-  document.getElementById("map-confirm")?.click();
+  mapSelectScreen.style.display="none";
+  document.getElementById("lobby-choice-screen").style.display="flex";
 });
 document.getElementById("menu-settings")?.addEventListener("click",()=>{
   mapSelectScreen.style.display="none";
@@ -949,14 +952,98 @@ document.getElementById("menu-logout")?.addEventListener("click",()=>{
   document.getElementById("logout-btn")?.click();
 });
 function syncMenuOnlineCount(){
-  const src=document.getElementById("player-count");
   const dst=document.getElementById("menu-online-count");
-  if(dst && src){
-    const m=(src.textContent||"").match(/\d+/);
-    dst.textContent=m?m[0]:"0";
+  if(!dst) return;
+
+  // Read the real Supabase Presence state whenever possible.
+  if(ch){
+    try{
+      const state=ch.presenceState();
+      const count=Object.keys(state||{}).length;
+      dst.textContent=String(multiplayerLoggedIn ? Math.max(1,count) : 0);
+      return;
+    }catch(_){}
   }
+
+  // Fallback to the actual multiplayer HUD count.
+  const src=document.getElementById("mp-count");
+  const m=(src?.textContent||"").match(/\d+/);
+  dst.textContent=m?m[0]:(multiplayerLoggedIn?"1":"0");
 }
 setInterval(syncMenuOnlineCount,1000);
+
+
+const lobbyChoiceScreen=document.getElementById("lobby-choice-screen");
+const privateCodeScreen=document.getElementById("private-code-screen");
+const roomCodeDisplay=document.getElementById("room-code-display");
+const roomTypeLabel=document.getElementById("room-type-label");
+const roomCodeText=document.getElementById("room-code-text");
+
+async function stopCurrentLobbyChannel(){
+  if(ch){
+    try{await ch.untrack();}catch(_){}
+    try{await authClient.removeChannel(ch);}catch(_){}
+    ch=null;
+  }
+  multiplayerStarted=false;
+}
+async function enterSelectedLobby(mode,code="PUBLIC"){
+  lobbyMode=mode;
+  lobbyCode=mode==="private"?cleanLobbyCode(code):"PUBLIC";
+  if(mode==="private" && lobbyCode.length!==6) return false;
+  await stopCurrentLobbyChannel();
+  multiplayerLoggedIn=true;
+  await startMultiplayer();
+  roomTypeLabel.textContent=mode==="private"?"PRIVATE CODE":"PUBLIC LOBBY";
+  roomCodeText.textContent=lobbyCode;
+  lobbyChoiceScreen.style.display="none";
+  privateCodeScreen.style.display="none";
+  loadingScreen.style.display="flex";
+  loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
+  let p=0; loadingBar.style.width="0%"; loadingPercent.textContent="0%";
+  const timer=setInterval(()=>{
+    p=Math.min(100,p+10); loadingBar.style.width=p+"%"; loadingPercent.textContent=p+"%";
+    if(p>=100){
+      clearInterval(timer); applyMap(pendingMap);
+      setTimeout(()=>{
+        loadingScreen.style.display="none";
+        roomCodeDisplay.style.display="block";
+        if(startScreen) startScreen.style.display="flex";
+      },180);
+    }
+  },55);
+  return true;
+}
+document.getElementById("join-public")?.addEventListener("click",()=>enterSelectedLobby("public"));
+document.getElementById("private-lobby-option")?.addEventListener("click",()=>{
+  lobbyChoiceScreen.style.display="none"; privateCodeScreen.style.display="flex";
+  document.getElementById("private-code-message").textContent="";
+});
+document.getElementById("lobby-choice-back")?.addEventListener("click",()=>{
+  lobbyChoiceScreen.style.display="none"; mapSelectScreen.style.display="flex";
+});
+document.getElementById("private-code-back")?.addEventListener("click",()=>{
+  privateCodeScreen.style.display="none"; lobbyChoiceScreen.style.display="flex";
+});
+document.getElementById("create-private")?.addEventListener("click",()=>{
+  const code=makeLobbyCode();
+  document.getElementById("private-code-input").value=code;
+  document.getElementById("private-code-message").textContent="Private code created: "+code;
+  enterSelectedLobby("private",code);
+});
+document.getElementById("join-private")?.addEventListener("click",()=>{
+  const input=document.getElementById("private-code-input");
+  const code=cleanLobbyCode(input.value);
+  input.value=code;
+  if(code.length!==6){
+    document.getElementById("private-code-message").textContent="Enter a 6-character private code.";
+    return;
+  }
+  enterSelectedLobby("private",code);
+});
+document.getElementById("private-code-input")?.addEventListener("input",e=>{
+  e.target.value=cleanLobbyCode(e.target.value);
+});
 
 document.querySelectorAll(".map-card").forEach(card=>{
   card.addEventListener("click",()=>{
@@ -966,6 +1053,8 @@ document.querySelectorAll(".map-card").forEach(card=>{
 });
 document.getElementById("map-confirm")?.addEventListener("click",()=>{
   mapSelectScreen.style.display="none";
+  document.getElementById("lobby-choice-screen").style.display="flex";
+  return;
   loadingScreen.style.display="flex";
   loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
   let p=0;
@@ -1102,6 +1191,7 @@ async function logoutOfGame(){
 
   multiplayerStarted=false;
   multiplayerLoggedIn=false;
+  document.getElementById("room-code-display")?.style && (document.getElementById("room-code-display").style.display="none");
 
   // Remove remote characters from this browser.
   if(typeof remotes!=="undefined"){
@@ -1223,9 +1313,13 @@ function startMultiplayer(){
    const state=ch.presenceState(),ids=new Set(Object.keys(state));
    for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.m);remotes.delete(id)}
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
+   syncMenuOnlineCount();
  }).subscribe(async st=>{
    if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-   if(st==="SUBSCRIBED")await ch.track({id:myId,userId:currentAuthUser?.id||null,username:currentUsername,role:currentRole,joined_at:Date.now()});
+   if(st==="SUBSCRIBED"){
+     await ch.track({id:myId,userId:currentAuthUser?.id||null,username:currentUsername,role:currentRole,joined_at:Date.now()});
+     syncMenuOnlineCount();
+   }
  });
  let lastNet=0;
  function netLoop(t){
