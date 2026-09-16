@@ -619,10 +619,18 @@ document.addEventListener("keyup",e=>{
 // Uses the same Supabase browser client as multiplayer.
 const AUTH_URL="https://wsucaukqrommcshdpdxy.supabase.co";
 const AUTH_KEY="sb_publishable_eksR6ebuyO98BaYm5pVTdg__4exI5Xc";
-const authClient=window.supabase.createClient(AUTH_URL,AUTH_KEY);
+const authClient=window.supabase.createClient(AUTH_URL,AUTH_KEY,{
+  auth:{
+    persistSession:false,
+    autoRefreshToken:false,
+    detectSessionInUrl:false
+  }
+});
 let currentUsername="Player";
 
 const authScreen=document.getElementById("auth-screen");
+const earlyLogoutBtn=document.getElementById("logout-btn");
+if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
 const authMessage=document.getElementById("auth-message");
 const loginForm=document.getElementById("login-form");
 const signupForm=document.getElementById("signup-form");
@@ -640,6 +648,7 @@ async function enterGame(user){
   currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
   multiplayerLoggedIn=true;
   authScreen.style.display="none";
+  if(earlyLogoutBtn) earlyLogoutBtn.style.display="block";
   if(document.activeElement && typeof document.activeElement.blur==="function") document.activeElement.blur();
   clearMovementKeys();
   window.focus();
@@ -691,10 +700,52 @@ document.getElementById("login-btn").onclick=async()=>{
   await enterGame(data.user);
 };
 
-(async()=>{
-  const {data}=await authClient.auth.getSession();
-  if(data.session?.user) await enterGame(data.session.user);
-})();
+// Sessions are intentionally not restored on page reload.
+showLogin();
+
+
+// ================= LOG OUT =================
+const logoutBtn=document.getElementById("logout-btn");
+async function logoutOfGame(){
+  clearMovementKeys();
+
+  // Leave Realtime first so this player immediately disappears from Presence.
+  if(typeof ch!=="undefined" && ch){
+    try { await ch.untrack(); } catch(e) {}
+    try { await authClient.removeChannel(ch); } catch(e) {}
+    ch=null;
+  }
+
+  multiplayerStarted=false;
+  multiplayerLoggedIn=false;
+
+  // Remove remote characters from this browser.
+  if(typeof remotes!=="undefined"){
+    for(const [id,r] of remotes){
+      try { scene.remove(r.m); } catch(e) {}
+    }
+    remotes.clear();
+  }
+
+  if(mpStatus) mpStatus.textContent="Login required";
+  if(mpCount) mpCount.textContent="Players: 0";
+
+  const {error}=await authClient.auth.signOut();
+  if(error){
+    msg(error.message);
+    return;
+  }
+
+  currentUsername="Player";
+  authScreen.style.display="flex";
+  if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
+  showLogin();
+  document.getElementById("login-email").value="";
+  document.getElementById("login-password").value="";
+  if(document.exitPointerLock) document.exitPointerLock();
+}
+if(logoutBtn) logoutBtn.addEventListener("click",logoutOfGame);
+// ================= END LOG OUT =================
 
 // ---- SUPABASE MULTIPLAYER V1 ----
 const SB_URL="https://wsucaukqrommcshdpdxy.supabase.co";
