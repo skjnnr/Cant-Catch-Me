@@ -187,3 +187,21 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
   padding-top:8px;
   border-top:1px solid rgba(255,255,255,.55);
 }
+
+#room-leaderboard{
+  position:fixed !important;
+  left:18px !important;
+  top:145px !important;
+  width:220px !important;
+  min-height:90px !important;
+  padding:12px 14px !important;
+  background:#165cd2 !important;
+  color:#fff !important;
+  border:2px solid #fff !important;
+  border-radius:10px !important;
+  z-index:99999 !important;
+  pointer-events:none !important;
+}
+#room-leaderboard.in-room{display:block !important;}
+#room-leaderboard:not(.in-room){display:none !important;}
+#leaderboard-title,#leaderboard-names,#leaderboard-count{color:#fff !important;}

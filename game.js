@@ -1145,6 +1145,7 @@ async function enterSelectedLobby(mode,code=""){
   roomTypeLabel.textContent=mode==="private"?"PRIVATE ROOM CODE":"PUBLIC ROOM CODE";
   roomCodeText.textContent=lobbyCode;
   roomCodeDisplay.style.display="block";
+  roomLeaderboard?.classList.add("in-room");
   setTimeout(updateRoomLeaderboard,100);
   lobbyChoiceScreen.style.display="none";
   privateCodeScreen.style.display="none";
@@ -1162,6 +1163,8 @@ async function enterSelectedLobby(mode,code=""){
       setTimeout(()=>{
         loadingScreen.style.display="none";
         roomCodeDisplay.style.display="block";
+        roomLeaderboard?.classList.add("in-room");
+        updateRoomLeaderboard();
         if(startScreen) startScreen.style.display="flex";
       },180);
     }
@@ -1548,7 +1551,7 @@ function getRoomPlayers(){
         if(!p) continue;
         players.push({
           id:String(p.id||""),
-          username:String(p.username||p.name||"Player")
+          username:String(p.username||p.name||p.user_name||"Player")
         });
       }
     }
@@ -1569,25 +1572,25 @@ function updateRoomLeaderboard(){
   if(!multiplayerLoggedIn || !ch){
     leaderboardNames.innerHTML="";
     leaderboardCount.textContent="Player 0/12";
-    roomLeaderboard.style.display="none";
+    roomLeaderboard.classList.remove("in-room");
     return;
   }
 
   const players=getRoomPlayers();
   leaderboardNames.innerHTML="";
-  players.forEach((p,i)=>{
+  for(let i=0;i<PUBLIC_ROOM_LIMIT;i++){
     const row=document.createElement("div");
     row.className="leaderboard-player";
-    row.textContent=p.username || ("Player "+(i+1));
+    row.textContent=players[i]?.username || ("Player "+(i+1));
     leaderboardNames.appendChild(row);
-  });
+  }
 
   leaderboardCount.textContent="Player "+players.length+"/"+PUBLIC_ROOM_LIMIT;
-  roomLeaderboard.style.display="block";
+  roomLeaderboard.classList.add("in-room");
 }
 
 function hideRoomLeaderboard(){
-  if(roomLeaderboard) roomLeaderboard.style.display="none";
+  if(roomLeaderboard) roomLeaderboard.classList.remove("in-room");
   if(leaderboardNames) leaderboardNames.innerHTML="";
   if(leaderboardCount) leaderboardCount.textContent="Player 0/12";
 }
