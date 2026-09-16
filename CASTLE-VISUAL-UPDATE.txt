@@ -1,0 +1,1 @@
+Castle update: non-stretched repeated stone bricks, stone-brick courtyard floor, visible modeled lamp posts with warm lights. Original map, selector, loading screen, multiplayer, CREATOR/MOD retained.

@@ -253,93 +253,122 @@ let castleColliders = [];
 let selectedMap = "original";
 let pendingMap = "original";
 
-function castleStoneTexture(){
-  const c=document.createElement("canvas"); c.width=c.height=256;
+function makeTileTexture(kind="wall"){
+  const c=document.createElement("canvas"); c.width=c.height=512;
   const x=c.getContext("2d");
-  x.fillStyle="#6f7d83"; x.fillRect(0,0,256,256);
-  for(let y=0;y<256;y+=32){
-    const offset=((y/32)%2)*24;
-    for(let xx=-48+offset;xx<256;xx+=48){
-      x.fillStyle=`rgb(${105+Math.random()*18|0},${118+Math.random()*16|0},${124+Math.random()*16|0})`;
-      x.fillRect(xx+1,y+1,46,30);
-      x.strokeStyle="#4e5b61"; x.strokeRect(xx+1,y+1,46,30);
+  const floor=kind==="floor";
+  x.fillStyle=floor?"#727b7e":"#68757a"; x.fillRect(0,0,512,512);
+  const bh=floor?42:58, bw=floor?105:112;
+  for(let y=-bh;y<512+bh;y+=bh){
+    const row=Math.floor(y/bh), off=(row%2)*(bw/2);
+    for(let xx=-bw+off;xx<512+bw;xx+=bw){
+      const v=(Math.random()*22-11)|0;
+      const base=floor?116:108;
+      x.fillStyle=`rgb(${base+v},${base+8+v},${base+10+v})`;
+      x.fillRect(xx+3,y+3,bw-6,bh-6);
+      x.strokeStyle="rgba(35,43,47,.65)"; x.lineWidth=3;
+      x.strokeRect(xx+2,y+2,bw-4,bh-4);
+      x.strokeStyle="rgba(210,220,220,.18)"; x.lineWidth=2;
+      x.beginPath(); x.moveTo(xx+5,y+5); x.lineTo(xx+bw-6,y+5); x.stroke();
     }
   }
   const t=new THREE.CanvasTexture(c);
-  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(3,3);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.magFilter=THREE.NearestFilter;
   return t;
 }
-const castleStone=new THREE.MeshStandardMaterial({map:castleStoneTexture(),roughness:.95,color:0xd7e0e3});
-const castleDark=new THREE.MeshStandardMaterial({color:0x4b5960,roughness:1});
-const castleWood=new THREE.MeshStandardMaterial({color:0x76502f,roughness:.95});
-const castleGrass=new THREE.MeshStandardMaterial({color:0x526f45,roughness:1});
-const castleBannerRed=new THREE.MeshStandardMaterial({color:0x9c3f35,roughness:.9});
-const castleBannerBlue=new THREE.MeshStandardMaterial({color:0x315f91,roughness:.9});
+function tiledMaterial(base,rx,ry){
+  const tex=base.clone(); tex.needsUpdate=true; tex.repeat.set(rx,ry);
+  return new THREE.MeshStandardMaterial({map:tex,roughness:.92,color:0xd8dcdd});
+}
+const castleWallBase=makeTileTexture("wall");
+const castleFloorBase=makeTileTexture("floor");
+const castleStone=new THREE.MeshStandardMaterial({map:castleWallBase,roughness:.94,color:0xd5dbdd});
+const castleDark=new THREE.MeshStandardMaterial({color:0x48545a,roughness:1});
+const castleWood=new THREE.MeshStandardMaterial({color:0x68472d,roughness:.95});
+const castleGrass=new THREE.MeshStandardMaterial({color:0x4e6842,roughness:1});
+const castleBannerRed=new THREE.MeshStandardMaterial({color:0x9b3f35,roughness:.9});
+const castleBannerBlue=new THREE.MeshStandardMaterial({color:0x285b94,roughness:.9});
+const lampMetal=new THREE.MeshStandardMaterial({color:0x22282d,roughness:.72,metalness:.25});
+const lampGlow=new THREE.MeshBasicMaterial({color:0xffc45b});
 
 function castleAddCollider(x,z,w,d,topY=0,jumpable=true){
   castleColliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,topY,jumpable});
 }
-function castleBox(x,y,z,w,h,d,mat=castleStone,solid=true){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+function castleBox(x,y,z,w,h,d,mat=castleStone,solid=true,autoTile=false){
+  let useMat=mat;
+  if(autoTile && mat===castleStone){
+    const tex=castleWallBase.clone(); tex.needsUpdate=true;
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+    tex.repeat.set(Math.max(1,w/7),Math.max(1,h/4));
+    useMat=new THREE.MeshStandardMaterial({map:tex,roughness:.94,color:0xd6dcde});
+  }
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),useMat);
   m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
   scene.add(m); castleObjects.push(m);
   if(solid) castleAddCollider(x,z,w,d,y+h/2,true);
   return m;
 }
 function castleTower(x,z,w=15,h=13){
-  castleBox(x,h/2,z,w,h,w);
-  for(const [dx,dz] of [[-w/2+1.5,-w/2+1.5],[w/2-1.5,-w/2+1.5],[-w/2+1.5,w/2-1.5],[w/2-1.5,w/2-1.5]])
-    castleBox(x+dx,h+1,z+dz,3,2,3,castleStone,true);
+  castleBox(x,h/2,z,w,h,w,castleStone,true,true);
+  for(const [dx,dz] of [[-w/2+1.7,-w/2+1.7],[w/2-1.7,-w/2+1.7],[-w/2+1.7,w/2-1.7],[w/2-1.7,w/2-1.7]])
+    castleBox(x+dx,h+1.25,z+dz,3.4,2.5,3.4,castleStone,true,true);
+}
+function castleLamp(x,z){
+  castleBox(x,.45,z,3.2,.9,3.2,castleStone,true,true);
+  castleBox(x,2.7,z,.38,4.5,.38,lampMetal,false);
+  castleBox(x,4.8,z,1.25,.18,1.25,lampMetal,false);
+  const glow=castleBox(x,4.35,z,.78,1.15,.78,lampGlow,false);
+  const cap=new THREE.Mesh(new THREE.ConeGeometry(.9,.65,4),lampMetal);
+  cap.position.set(x,5.15,z); cap.rotation.y=Math.PI/4;
+  scene.add(cap); castleObjects.push(cap);
+  const light=new THREE.PointLight(0xffa83d,1.45,25,2);
+  light.position.set(x,4.5,z); scene.add(light); castleObjects.push(light);
 }
 function buildCastleMap(){
   castleColliders=[];
-  // stone foundation and grassy inner courtyard
+  // Foundation and visible stone-brick courtyard floor.
   castleBox(0,-.55,0,170,1,170,castleDark,false);
-  castleBox(0,.01,0,72,.08,72,castleGrass,false);
+  const ft=castleFloorBase.clone(); ft.needsUpdate=true; ft.wrapS=ft.wrapT=THREE.RepeatWrapping; ft.repeat.set(18,18);
+  const floorMat=new THREE.MeshStandardMaterial({map:ft,roughness:.96,color:0xd0d3d2});
+  castleBox(0,.015,0,158,.08,158,floorMat,false);
 
-  // outer fortress walls with battlements
-  castleBox(0,5,-82,164,10,5);
-  castleBox(0,5,82,164,10,5);
-  castleBox(-82,5,0,5,10,164);
-  castleBox(82,5,0,5,10,164);
-  for(let x=-76;x<=76;x+=10){ castleBox(x,11,-82,5,3,5); castleBox(x,11,82,5,3,5); }
-  for(let z=-72;z<=72;z+=10){ castleBox(-82,11,z,5,3,5); castleBox(82,11,z,5,3,5); }
+  // Outer walls: repeated brick scale prevents stretching.
+  castleBox(0,5,-82,164,10,5,castleStone,true,true);
+  castleBox(0,5,82,164,10,5,castleStone,true,true);
+  castleBox(-82,5,0,5,10,164,castleStone,true,true);
+  castleBox(82,5,0,5,10,164,castleStone,true,true);
+  for(let x=-76;x<=76;x+=10){castleBox(x,11,-82,5,3,5,castleStone,true,true);castleBox(x,11,82,5,3,5,castleStone,true,true);}
+  for(let z=-72;z<=72;z+=10){castleBox(-82,11,z,5,3,5,castleStone,true,true);castleBox(82,11,z,5,3,5,castleStone,true,true);}
 
-  // four corner towers
-  castleTower(-72,-72,18,16); castleTower(72,-72,18,16);
-  castleTower(-72,72,18,16); castleTower(72,72,18,16);
+  castleTower(-72,-72,18,16);castleTower(72,-72,18,16);
+  castleTower(-72,72,18,16);castleTower(72,72,18,16);
 
-  // central keep with doorway gap
-  castleBox(0,7,-25,52,14,5);
-  castleBox(-24,7,0,5,14,50);
-  castleBox(24,7,0,5,14,50);
-  castleBox(-15,7,25,18,14,5);
-  castleBox(15,7,25,18,14,5);
+  // Central keep.
+  castleBox(0,7,-25,52,14,5,castleStone,true,true);
+  castleBox(-24,7,0,5,14,50,castleStone,true,true);
+  castleBox(24,7,0,5,14,50,castleStone,true,true);
+  castleBox(-15,7,25,18,14,5,castleStone,true,true);
+  castleBox(15,7,25,18,14,5,castleStone,true,true);
   castleBox(0,14.5,0,53,1.5,52,castleDark,false);
-  castleTower(-20,-20,10,18); castleTower(20,-20,10,18);
+  castleTower(-20,-20,10,18);castleTower(20,-20,10,18);
 
-  // raised walkways, stairs/stepping platforms and hiding blocks
-  castleBox(-48,3,0,28,6,10);
-  castleBox(48,3,0,28,6,10);
+  castleBox(-48,3,0,28,6,10,castleStone,true,true);
+  castleBox(48,3,0,28,6,10,castleStone,true,true);
   for(let i=0;i<6;i++){
-    castleBox(-34+i*3,0.5+i*.55,38,3,1+i*1.1,8);
-    castleBox(34-i*3,0.5+i*.55,-42,3,1+i*1.1,8);
+    castleBox(-34+i*3,.5+i*.55,38,3,1+i*1.1,8,castleStone,true,true);
+    castleBox(34-i*3,.5+i*.55,-42,3,1+i*1.1,8,castleStone,true,true);
   }
   for(const [x,z] of [[-12,48],[12,48],[-48,-28],[48,28],[0,-55],[-55,35],[55,-35]])
     castleBox(x,1.5,z,4,3,4,castleWood,true);
 
-  // banners like the reference image
-  for(const [x,z,mat] of [[-70,-62,castleBannerBlue],[70,-62,castleBannerRed],[-70,62,castleBannerRed],[70,62,castleBannerBlue]]){
-    const b=castleBox(x,10,z,6,7,.25,mat,false);
-  }
+  // Banners.
+  for(const [x,z,mat] of [[-70,-62,castleBannerBlue],[70,-62,castleBannerRed],[-70,62,castleBannerRed],[70,62,castleBannerBlue]])
+    castleBox(x,10,z,6,7,.28,mat,false);
 
-  // warm torch lights around the fortress
-  for(const [x,z] of [[-30,-30],[30,-30],[-30,30],[30,30],[-68,0],[68,0],[0,-68],[0,68]]){
-    const light=new THREE.PointLight(0xffa13a,1.1,22,2);
-    light.position.set(x,6,z); scene.add(light); castleObjects.push(light);
-    const flame=new THREE.Mesh(new THREE.SphereGeometry(.28,8,6),new THREE.MeshBasicMaterial({color:0xff9b32}));
-    flame.position.copy(light.position); scene.add(flame); castleObjects.push(flame);
-  }
+  // Fully visible lamp posts: base, post, lantern housing, cap and actual light.
+  [[-34,-34],[34,-34],[-34,34],[34,34],[-66,0],[66,0],[0,-66],[0,66]].forEach(v=>castleLamp(...v));
+
   castleObjects.forEach(o=>o.visible=false);
 }
 buildCastleMap();
