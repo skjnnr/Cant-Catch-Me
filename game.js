@@ -1483,7 +1483,7 @@ async function startMultiplayer(){
    const nextName=p.username||"Player";
    const nextRole=(p.role==="owner"||p.role==="mod")?p.role:"player";
    if(!r){
-     r={m:remoteModel(nextName,nextRole),t:new THREE.Vector3(),username:nextName,role:nextRole};
+     r={m:remoteModel(nextName,nextRole),t:new THREE.Vector3(),username:nextName,role:nextRole,userId:p.userId||null};
      remotes.set(p.id,r);
    }else if(r.username!==nextName || r.role!==nextRole){
      const oldTag=r.m.children.find(o=>o.userData?.playerNameplate);
@@ -1495,7 +1495,9 @@ async function startMultiplayer(){
      r.m.add(makeNameSprite(nextName,nextRole));
      r.username=nextName;
      r.role=nextRole;
+     r.userId=p.userId||r.userId||null;
    }
+   r.userId=p.userId||r.userId||null;
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
  }).on("presence",{event:"sync"},()=>{
    if(!ch)return;
@@ -1934,6 +1936,7 @@ async function syncBombGameplay(){
  const localUserId=session?.user?.id||null;
  const holder=players.find(p=>p.user_id===m.bomb_holder);
  bombOwnerText.textContent="BOMB: "+(holder?.username||"Selecting...");
+ updateBombHolderRing(m.bomb_holder,localUserId);
 
  if(m.round_number!==roundSeen){
    roundSeen=m.round_number;
@@ -1955,7 +1958,7 @@ async function syncBombGameplay(){
    bombTimeText.textContent=left.toFixed(1);
    if(left<=0.05&&!bombDetonationRequested){
      bombDetonationRequested=true;
-     const r=await authClient.rpc("detonate_bomb",{requested_match:dbMatchId});
+     const r=await authClient.rpc("detonate_bomb_safe",{requested_match:dbMatchId});
      setTimeout(()=>{bombDetonationRequested=false;syncBombGameplay();},400);
    }
    // Attempt tag only if this client is the authoritative current holder.
@@ -1981,22 +1984,35 @@ async function syncBombGameplay(){
 let tagCooldownUntil=0;
 async function attemptBombTag(players){
  if(Date.now()<tagCooldownUntil)return;
- // Remote models already contain the networked positions. Tag radius ~1.65m.
- for(const [id,r] of remotes){
-   const target=players.find(p=>p.user_id===id || p.username===r.username);
-   if(!target||target.eliminated||target.user_id===authUser?.id||!r.m)continue;
-   const dx=player.x-r.m.position.x,dz=player.z-r.m.position.z;
-   if(Math.hypot(dx,dz)<=1.65){
-     tagCooldownUntil=Date.now()+1200;
-     const res=await authClient.rpc("tag_player",{requested_match:dbMatchId,tagged_player:target.user_id});
-     if(res.error)console.warn("Tag rejected",res.error);
+ const {data:{session}}=await authClient.auth.getSession();
+ const localUserId=session?.user?.id||null;
+ if(!localUserId)return;
+
+ // The bomb holder automatically tags an alive player by touching them.
+ for(const [,r] of remotes){
+   const targetUserId=r.userId||null;
+   if(!targetUserId || targetUserId===localUserId || !r.m)continue;
+   const target=players.find(p=>p.user_id===targetUserId);
+   if(!target || target.eliminated || target.alive===false)continue;
+
+   const dx=player.x-r.m.position.x;
+   const dz=player.z-r.m.position.z;
+   if(Math.hypot(dx,dz)<=1.8){
+     tagCooldownUntil=Date.now()+900;
+     const {data,error}=await authClient.rpc("tag_player_safe",{
+       requested_match:dbMatchId,
+       tagged_player:targetUserId
+     });
+     if(error)console.warn("Tag rejected:",error);
+     else console.log("Bomb transferred:",data);
      return;
    }
  }
 }
-
 function showBombResult(won){
  if(bombLoop){clearInterval(bombLoop);bombLoop=null;}
+ localBombRing.visible=false;
+ for(const [,r] of remotes){if(r.bombRing)r.bombRing.visible=false;}
  bombResultScreen.style.display="flex";
  bombResultTitle.textContent=won?"YOU WON!":"YOU HAVE BEEN BLOWN UP!";
  bombResultSub.textContent=won?"You are the last player remaining.":"You were eliminated from this match.";
@@ -2243,3 +2259,37 @@ async function watchActiveMatch(){
 }
 activeMatchWatcher=setInterval(watchActiveMatch,500);
 watchActiveMatch();
+
+
+// ===== BOMB HOLDER RED RING =====
+const bombRingMaterial=new THREE.MeshBasicMaterial({
+  color:0xff2020,transparent:true,opacity:.95,side:THREE.DoubleSide,depthTest:true
+});
+function createBombRing(){
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.12,.10,12,48),bombRingMaterial.clone());
+  ring.rotation.x=Math.PI/2;
+  ring.renderOrder=5;
+  return ring;
+}
+const localBombRing=createBombRing();
+scene.add(localBombRing);
+localBombRing.visible=false;
+
+function ensureRemoteBombRing(r){
+  if(r.bombRing)return r.bombRing;
+  const ring=createBombRing();
+  ring.position.y=-1.72;
+  r.m.add(ring);
+  r.bombRing=ring;
+  return ring;
+}
+
+function updateBombHolderRing(holderUserId,localUserId){
+  localBombRing.position.set(player.x,.055,player.z);
+  localBombRing.visible=!!holderUserId && holderUserId===localUserId;
+
+  for(const [,r] of remotes){
+    const ring=ensureRemoteBombRing(r);
+    ring.visible=!!holderUserId && !!r.userId && r.userId===holderUserId;
+  }
+}

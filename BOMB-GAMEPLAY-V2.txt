@@ -1,0 +1,18 @@
+CAN'T CATCH ME - BOMB GAMEPLAY V2
+
+Run BOMB-GAMEPLAY-V2.sql once in Supabase.
+
+Implemented/fixed:
+- Server-authoritative bomb transfer.
+- Only the actual bomb holder can tag.
+- Touch another alive player within ~1.8 game units to tag.
+- Successful tag transfers bomb and adds 3 seconds.
+- Red ring around the player who currently holds the bomb.
+- Ring transfers automatically when bomb_holder changes in Supabase.
+- Bomb timer is based on Supabase bomb_explodes_at.
+- At zero, current holder is eliminated.
+- More than one survivor -> between_rounds -> next bomb round.
+- One survivor -> finished + winner.
+- Eliminated player sees YOU HAVE BEEN BLOWN UP.
+- Winner sees YOU WON.
+- Existing multiplayer/movement fix is retained.
