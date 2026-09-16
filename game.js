@@ -589,6 +589,12 @@ window.addEventListener("resize",()=>{
 
 
 
+
+function isTypingInForm(){
+  const el=document.activeElement;
+  return !!el && (el.tagName==="INPUT" || el.tagName==="TEXTAREA" || el.isContentEditable);
+}
+
 // Prevent typing on the login/create-account screen from leaving movement keys "stuck".
 function clearMovementKeys(){
   if(typeof keys!=="undefined"){
@@ -603,17 +609,6 @@ document.addEventListener("focusin",e=>{
 document.addEventListener("focusout",clearMovementKeys);
 window.addEventListener("blur",clearMovementKeys);
 
-
-document.addEventListener("keydown",e=>{
-  const typing=e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA");
-  if(typing && ["KeyW","KeyA","KeyS","KeyD","ShiftLeft","ShiftRight","Space"].includes(e.code)){
-    clearMovementKeys();
-  }
-},true);
-document.addEventListener("keyup",e=>{
-  const typing=e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA");
-  if(typing) clearMovementKeys();
-},true);
 
 // ================= ACCOUNT SYSTEM =================
 // Uses the same Supabase browser client as multiplayer.
