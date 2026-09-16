@@ -1,3 +1,9 @@
+
+function formFieldHasFocus(){
+  const el=document.activeElement;
+  return !!el && (el.matches?.("input, textarea, select") || el.isContentEditable);
+}
+
 // CAN'T CATCH ME — Stage 3 movement repair
 // Clean single-source controller. WASD does not depend on pointer lock.
 
@@ -411,6 +417,7 @@ if(resumeButton) resumeButton.addEventListener("click",()=>{setSettings(false);r
 if(closeButton) closeButton.addEventListener("click",()=>setSettings(false));
 
 window.addEventListener("keydown",e=>{
+  if(formFieldHasFocus()) return;
   if(e.code==="Escape" && started) setSettings(!settingsOpen);
 
   // H toggles first-person / third-person.
@@ -609,6 +616,15 @@ document.addEventListener("focusin",e=>{
 document.addEventListener("focusout",clearMovementKeys);
 window.addEventListener("blur",clearMovementKeys);
 
+
+
+// Login/create-account fields own their keystrokes completely.
+// This lets W/A/S/D type normally instead of being captured by game controls.
+document.querySelectorAll("#auth-screen input").forEach(input=>{
+  input.addEventListener("keydown",e=>e.stopPropagation());
+  input.addEventListener("keyup",e=>e.stopPropagation());
+  input.addEventListener("keypress",e=>e.stopPropagation());
+});
 
 // ================= ACCOUNT SYSTEM =================
 // Uses the same Supabase browser client as multiplayer.
