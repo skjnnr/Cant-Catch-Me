@@ -32,22 +32,47 @@
 </div>
 
 
+
 <div id="map-select-screen">
-  <div class="map-menu">
-    <div class="map-title">CAN'T CATCH ME</div>
-    <h2>SELECT MAP</h2>
-    <p>Choose where you want to play</p>
-    <div class="map-cards">
-      <button class="map-card selected" data-map="original">
-        <div class="map-preview original-preview"><span>ORIGINAL</span></div>
-        <b>ORIGINAL</b><small>Current city map</small>
-      </button>
-      <button class="map-card" data-map="castle">
-        <div class="map-preview castle-preview"><span>CASTLE</span></div>
-        <b>CASTLE</b><small>Stone fortress map</small>
-      </button>
+  <div class="ccm-menu-shell">
+    <aside class="ccm-left">
+      <div class="ccm-logo"><span>CAN'T</span><strong>CATCH ME</strong></div>
+      <button id="menu-play" class="ccm-nav"><span>▶</span> PLAY</button>
+      <button id="menu-select" class="ccm-nav active"><span>▱</span> SELECT MAP</button>
+      <button id="menu-settings" class="ccm-nav"><span>⚙</span> SETTINGS</button>
+      <button id="menu-credits" class="ccm-nav"><span>♟</span> CREDITS</button>
+      <button id="menu-logout" class="ccm-nav"><span>↪</span> LOG OUT</button>
+    </aside>
+
+    <div class="ccm-profile">
+      <div class="ccm-avatar">●</div>
+      <div><b id="menu-username">Player</b><small id="menu-role">PLAYER</small></div>
+      <span>⚙</span>
     </div>
-    <button id="map-confirm">PLAY SELECTED MAP</button>
+
+    <section class="ccm-map-panel">
+      <h2>SELECT MAP</h2>
+      <p>Choose a map to play on</p>
+      <div class="ccm-map-grid">
+        <button class="map-card selected" data-map="original">
+          <div class="ccm-thumb original-thumb"><div class="mini-city">▥ ▤ ▥<br>▬ ▦ ▬</div></div>
+          <b>ORIGINAL</b><small>Play on the original map</small>
+        </button>
+        <button class="map-card" data-map="castle">
+          <div class="ccm-thumb castle-thumb"><div class="mini-castle">♜ ♜ ♜<br>▥ ▥ ▥</div></div>
+          <b>CASTLE</b><small>Play on the castle</small>
+        </button>
+      </div>
+      <button id="map-confirm">CONFIRM</button>
+    </section>
+
+    <div class="ccm-online"><i></i> Players Online: <b id="menu-online-count">0</b></div>
+    <div class="ccm-version">v1.0.0</div>
+
+    <div id="credits-panel" class="ccm-popup">
+      <h2>CREDITS</h2><p>CAN'T CATCH ME</p><p>Game project</p>
+      <button id="credits-close">BACK</button>
+    </div>
   </div>
 </div>
 <div id="loading-screen">

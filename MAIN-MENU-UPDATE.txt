@@ -1,0 +1,10 @@
+Post-login main menu update:
+- PLAY
+- SELECT MAP with ORIGINAL and CASTLE
+- SETTINGS
+- CREDITS
+- LOG OUT
+- Username and CREATOR/MOD/PLAYER badge
+- Online player count
+- Confirm selection -> loading screen -> game
+- Dark Castle and Original map retained

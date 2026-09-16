@@ -902,6 +902,36 @@ const loadingBar=document.getElementById("loading-bar");
 const loadingPercent=document.getElementById("loading-percent");
 const loadingMapName=document.getElementById("loading-map-name");
 
+
+document.getElementById("menu-select")?.addEventListener("click",()=>{
+  document.querySelector(".ccm-map-panel")?.scrollIntoView({behavior:"smooth",block:"center"});
+});
+document.getElementById("menu-play")?.addEventListener("click",()=>{
+  document.getElementById("map-confirm")?.click();
+});
+document.getElementById("menu-settings")?.addEventListener("click",()=>{
+  mapSelectScreen.style.display="none";
+  settings.style.display="flex"; paused=true;
+});
+document.getElementById("menu-credits")?.addEventListener("click",()=>{
+  document.getElementById("credits-panel").style.display="block";
+});
+document.getElementById("credits-close")?.addEventListener("click",()=>{
+  document.getElementById("credits-panel").style.display="none";
+});
+document.getElementById("menu-logout")?.addEventListener("click",()=>{
+  document.getElementById("logout-button")?.click();
+});
+function syncMenuOnlineCount(){
+  const src=document.getElementById("player-count");
+  const dst=document.getElementById("menu-online-count");
+  if(dst && src){
+    const m=(src.textContent||"").match(/\d+/);
+    dst.textContent=m?m[0]:"0";
+  }
+}
+setInterval(syncMenuOnlineCount,1000);
+
 document.querySelectorAll(".map-card").forEach(card=>{
   card.addEventListener("click",()=>{
     pendingMap=card.dataset.map;
@@ -927,6 +957,16 @@ document.getElementById("map-confirm")?.addEventListener("click",()=>{
   },55);
 });
 
+
+function refreshMainMenuIdentity(){
+  const un=document.getElementById("menu-username");
+  const role=document.getElementById("menu-role");
+  if(un) un.textContent=currentUsername||"Player";
+  if(role){
+    role.textContent=currentRole==="owner"?"CREATOR":currentRole==="mod"?"MOD":"PLAYER";
+    role.style.color=currentRole==="mod"?"#ff8c24":"#27aaff";
+  }
+}
 async function enterGame(user){
   currentAuthUser=user;
   try{
@@ -940,6 +980,7 @@ async function enterGame(user){
   authScreen.style.display="none";
   if(startScreen) startScreen.style.display="none";
   if(mapSelectScreen) mapSelectScreen.style.display="flex";
+  refreshMainMenuIdentity();
   pendingMap=selectedMap;
   document.querySelectorAll(".map-card").forEach(c=>c.classList.toggle("selected",c.dataset.map===pendingMap));
   if(earlyLogoutBtn) earlyLogoutBtn.style.display="block";
