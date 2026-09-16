@@ -1085,6 +1085,7 @@ const roomTypeLabel=document.getElementById("room-type-label");
 const roomCodeText=document.getElementById("room-code-text");
 
 async function stopCurrentLobbyChannel(){
+  window.forceRoomLeaderboard?.(false);
   hideRoomLeaderboard();
   // Stop sending movement immediately before removing Presence/channel.
   multiplayerStarted=false;
@@ -1145,8 +1146,9 @@ async function enterSelectedLobby(mode,code=""){
   roomTypeLabel.textContent=mode==="private"?"PRIVATE ROOM CODE":"PUBLIC ROOM CODE";
   roomCodeText.textContent=lobbyCode;
   roomCodeDisplay.style.display="block";
+  window.forceRoomLeaderboard?.(true);
   roomLeaderboard?.classList.add("in-room");
-  setTimeout(updateRoomLeaderboard,100);
+  setTimeout(()=>window.refreshRoomLeaderboard?.(),100);
   lobbyChoiceScreen.style.display="none";
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
@@ -1163,8 +1165,9 @@ async function enterSelectedLobby(mode,code=""){
       setTimeout(()=>{
         loadingScreen.style.display="none";
         roomCodeDisplay.style.display="block";
+  window.forceRoomLeaderboard?.(true);
         roomLeaderboard?.classList.add("in-room");
-        updateRoomLeaderboard();
+        window.refreshRoomLeaderboard?.();
         if(startScreen) startScreen.style.display="flex";
       },180);
     }
@@ -1596,5 +1599,101 @@ function hideRoomLeaderboard(){
 }
 
 setInterval(()=>{
-  if(multiplayerLoggedIn && ch) updateRoomLeaderboard();
+  if(multiplayerLoggedIn && ch) window.refreshRoomLeaderboard?.();
 },500);
+
+
+// ===== HARD-FIXED IN-GAME LEADERBOARD =====
+(function(){
+  const old=document.getElementById("room-leaderboard");
+  if(old) old.remove();
+
+  const board=document.createElement("div");
+  board.id="room-leaderboard-fixed";
+  Object.assign(board.style,{
+    display:"none",
+    position:"fixed",
+    left:"18px",
+    top:"145px",
+    width:"220px",
+    padding:"12px 14px",
+    boxSizing:"border-box",
+    background:"#165cd2",
+    border:"2px solid white",
+    borderRadius:"10px",
+    color:"white",
+    zIndex:"2147483647",
+    fontFamily:"Arial, sans-serif",
+    fontSize:"14px",
+    lineHeight:"1.45",
+    pointerEvents:"none",
+    boxShadow:"0 8px 24px rgba(0,0,0,.35)"
+  });
+
+  const title=document.createElement("div");
+  title.textContent="Leader board";
+  Object.assign(title.style,{
+    color:"white",fontWeight:"900",fontSize:"18px",marginBottom:"8px"
+  });
+
+  const names=document.createElement("div");
+  const count=document.createElement("div");
+  Object.assign(count.style,{
+    color:"white",fontWeight:"900",marginTop:"9px",
+    paddingTop:"7px",borderTop:"1px solid rgba(255,255,255,.65)"
+  });
+
+  board.append(title,names,count);
+  document.body.appendChild(board);
+
+  window.forceRoomLeaderboard=function(show){
+    board.style.display=show?"block":"none";
+    if(show) window.refreshRoomLeaderboard();
+  };
+
+  window.refreshRoomLeaderboard=function(){
+    let players=[];
+    try{
+      if(ch){
+        const state=ch.presenceState()||{};
+        for(const entries of Object.values(state)){
+          for(const p of entries||[]){
+            if(!p) continue;
+            players.push({
+              id:String(p.id||""),
+              username:String(p.username||p.name||p.user_name||"Player")
+            });
+          }
+        }
+      }
+    }catch(e){ console.warn("Leaderboard presence:",e); }
+
+    if(typeof multiplayerLoggedIn!=="undefined" && multiplayerLoggedIn){
+      if(!players.some(p=>p.id===myId)){
+        players.unshift({id:myId,username:currentUsername||"Player 1"});
+      }
+    }
+
+    const unique=[];
+    const seen=new Set();
+    for(const p of players){
+      const key=p.id||p.username;
+      if(!seen.has(key)){seen.add(key);unique.push(p);}
+    }
+    players=unique.slice(0,12);
+
+    names.innerHTML="";
+    for(let i=0;i<12;i++){
+      const row=document.createElement("div");
+      row.textContent=players[i]?.username || ("Player "+(i+1));
+      row.style.color="white";
+      names.appendChild(row);
+    }
+    count.textContent="Player "+players.length+"/12";
+  };
+
+  // Keep the count/names synchronized with Presence joins and disconnects.
+  setInterval(()=>{
+    if(board.style.display!=="none") window.refreshRoomLeaderboard();
+  },350);
+})();
