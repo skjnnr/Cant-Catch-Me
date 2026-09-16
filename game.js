@@ -122,8 +122,13 @@ const M = {
 
 const colliders = [];
 
-function addCollider(x,z,w,d) {
-  colliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2});
+function addCollider(x,z,w,d,topY=0,jumpable=true) {
+  colliders.push({
+    minX:x-w/2,maxX:x+w/2,
+    minZ:z-d/2,maxZ:z+d/2,
+    topY,
+    jumpable
+  });
 }
 
 function box(x,y,z,w,h,d,mat,solid=false) {
@@ -132,7 +137,7 @@ function box(x,y,z,w,h,d,mat,solid=false) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
-  if(solid) addCollider(x,z,w,d);
+  if(solid) addCollider(x,z,w,d,y+h/2,true);
   return mesh;
 }
 
@@ -217,7 +222,7 @@ function tree(x,z,s=1) {
   crown.castShadow=true;
   scene.add(crown);
 
-  addCollider(x,z,1.6*s,1.6*s);
+  addCollider(x,z,1.6*s,1.6*s,4*s,true);
 }
 
 [
@@ -227,10 +232,10 @@ function tree(x,z,s=1) {
 ].forEach(v=>tree(v[0],v[1],v[2]));
 
 // Outer collision walls
-box(0,3,-109,218,6,1,M.dark,true);
-box(0,3,109,218,6,1,M.dark,true);
-box(-109,3,0,1,6,218,M.dark,true);
-box(109,3,0,1,6,218,M.dark,true);
+box(0,3,-109,218,6,1,M.dark,false); addCollider(0,-109,218,1,6,false);
+box(0,3,109,218,6,1,M.dark,false); addCollider(0,109,218,1,6,false);
+box(-109,3,0,1,6,218,M.dark,false); addCollider(-109,0,1,218,6,false);
+box(109,3,0,1,6,218,M.dark,false); addCollider(109,0,1,218,6,false);
 
 // Player
 const player = {
@@ -276,24 +281,23 @@ function held(code,key) {
 }
 
 function collisionAt(x,z) {
-  // While the player's feet are at crate-top height, don't let the old
-  // flat 2D crate collider prevent stepping horizontally onto the cube.
   const feet = playerFeetY();
 
   for(const c of colliders) {
-    if(
+    const overlap =
       x+player.radius>c.minX &&
       x-player.radius<c.maxX &&
       z+player.radius>c.minZ &&
-      z-player.radius<c.maxZ
-    ) {
-      // Small square colliders are crates/tree trunks. When high enough,
-      // permit crossing a crate footprint so landing on top is possible.
-      const w = c.maxX-c.minX;
-      const d = c.maxZ-c.minZ;
-      if(w <= 2.2 && d <= 2.2 && feet >= 1.65) continue;
-      return true;
-    }
+      z-player.radius<c.maxZ;
+
+    if(!overlap) continue;
+
+    // Once the player's feet are at/above an object's top, its side collider
+    // no longer blocks horizontal motion. This lets the player move across
+    // the top instead of hitting an invisible wall.
+    if(c.jumpable && feet >= c.topY - 0.12) continue;
+
+    return true;
   }
   return false;
 }
@@ -384,34 +388,26 @@ function playerFeetY() {
 // to act as jumpable platforms. For this Stage 3 map, the common cubes are
 // 2 units tall, so their top is y=2.
 function platformTopAt(x, z, previousFeet, nextFeet) {
-  // Ground is always a valid platform.
   let best = 0;
 
-  // Jumpable cube locations from the map. Each crate is ~2.1 x 2.1 and 2 high.
-  const centers = [];
-  for (const [cx,cz] of [[-25,-30],[25,-30],[-25,30],[25,30],[-78,-72],[78,72]]) {
-    for(let i=0;i<4;i++) {
-      centers.push([
-        cx + (i%2)*2.4 - 1.2,
-        cz + Math.floor(i/2)*2.4 - 1.2,
-        2
-      ]);
-    }
-  }
+  for(const c of colliders) {
+    if(!c.jumpable || c.topY <= 0) continue;
 
-  for (const [cx,cz,top] of centers) {
-    const half = 1.05;
     const horizontallyOn =
-      x + player.radius > cx-half &&
-      x - player.radius < cx+half &&
-      z + player.radius > cz-half &&
-      z - player.radius < cz+half;
+      x + player.radius > c.minX &&
+      x - player.radius < c.maxX &&
+      z + player.radius > c.minZ &&
+      z - player.radius < c.maxZ;
 
-    // Only land when falling through the top surface.
-    if (horizontallyOn && previousFeet >= top - 0.08 && nextFeet <= top + 0.08) {
-      best = Math.max(best, top);
+    if(!horizontallyOn) continue;
+
+    // Land when the player's feet cross the object's top while falling.
+    // The tolerance keeps fast frames from tunneling through thin tops.
+    if(previousFeet >= c.topY - 0.12 && nextFeet <= c.topY + 0.12) {
+      best = Math.max(best, c.topY);
     }
   }
+
   return best;
 }
 
@@ -436,7 +432,7 @@ function updateJump(dt) {
     const top = platformTopAt(player.x, player.z, previousFeet, nextFeet);
 
     // Land on ground or a cube top.
-    if(nextFeet <= top && previousFeet >= top - 0.15) {
+    if(nextFeet <= top + 0.08 && previousFeet >= top - 0.15) {
       player.y = GROUND_EYE_Y + top;
       player.velocityY = 0;
       player.onGround = true;
