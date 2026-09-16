@@ -1,0 +1,9 @@
+CAN'T CATCH ME - PRESENCE QUEUE
+1. Run REALTIME-PRESENCE-QUEUE.sql once in Supabase SQL Editor.
+2. Deploy this build.
+3. Queue online count now comes from Supabase Realtime Presence.
+4. Closing/leaving a browser removes it from Presence automatically.
+5. Below 2 connected players cancels/reset countdown.
+6. Reaching 2 connected players starts a fresh 30-second countdown.
+7. At 0 with 2+ connected players, room advances to loading.
+8. Database remains authoritative for round/bomb/elimination state.

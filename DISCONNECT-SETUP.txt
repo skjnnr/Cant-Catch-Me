@@ -1,0 +1,8 @@
+SUPABASE DISCONNECT FIX
+1. Run SUPABASE-DISCONNECT-SYSTEM.sql once in Supabase SQL Editor.
+2. Deploy this game build.
+3. While queued, each browser sends a heartbeat every 5 seconds.
+4. If a browser/tab disappears for 15 seconds, its stale match_players row is removed.
+5. If a disconnect drops the queue below the minimum, the countdown cancels.
+6. Back to Main Menu still removes the player immediately.
+7. The setup SQL also clears stale players from currently open test queues and sets open/new rooms to minimum 2.

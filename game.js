@@ -1740,25 +1740,71 @@ async function dbJoinPublicQueue(){
  const r=await authClient.rpc("join_game_match",{requested_room_code:m.room_code,requested_username:currentUsername||"Player"});
  if(r.error)throw r.error;if(!r.data?.success)throw new Error(r.data?.error||"Join failed");
  dbMatchId=r.data.match_id;dbMatchCode=r.data.room_code;lobbyMode="public";lobbyCode=dbMatchCode;
+ await startQueuePresence();
+ await startReliableHeartbeat();
+ await authClient.rpc("repair_queue_state",{requested_match:dbMatchId});
+ startMatchHeartbeat();
  if(roomCodeText)roomCodeText.textContent=dbMatchCode;if(roomTypeLabel)roomTypeLabel.textContent="PUBLIC ROOM CODE";
  queueOverlay && (queueOverlay.style.display="flex");await dbRefreshQueue();queuePoll=setInterval(dbRefreshQueue,500);
 }
 async function dbRefreshQueue(){
  if(!dbMatchId)return;
+ reliableHeartbeat();
+ // Repairs expired/cancelled countdowns after players leave/rejoin.
+ authClient.rpc("repair_queue_state",{requested_match:dbMatchId})
+   .then(({error})=>{if(error)console.warn("Queue repair:",error);});
  const mr=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
  const pr=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
- if(mr.error||pr.error)return;const m=mr.data,players=pr.data||[],n=players.length;
+ if(mr.error||pr.error)return;let m=mr.data,players=pr.data||[];
+ await presenceQueueRefresh();
+ const n=queuePresenceChannel ? queuePresenceCount : players.length;
  queueCount.textContent=n+" / 12 PLAYERS";
+
+ // Presence is authoritative for queue occupancy.
+ // Never display an expired/stale countdown when fewer than the minimum are connected.
+ const minimum=Number(m.min_players||2);
+ if(queuePresenceChannel && n < minimum){
+   queueStatus.textContent="WAITING FOR PLAYERS";
+   queueTimer.textContent="Minimum "+minimum+" players required";
+
+   // Wait for the DB repair before continuing so stale `countdown` state
+   // cannot overwrite the waiting UI later in this same refresh.
+   const reset=await authClient.rpc("force_queue_state_from_presence",{
+     requested_match:dbMatchId,
+     connected_players:n
+   });
+   if(reset.error) console.warn("Presence reset:",reset.error);
+
+   // Refresh authoritative match state after repair.
+   const fresh=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
+   if(!fresh.error) m=fresh.data;
+ }
+ else if(queuePresenceChannel && n >= minimum && m.status==="waiting"){
+   const start=await authClient.rpc("force_queue_state_from_presence",{
+     requested_match:dbMatchId,
+     connected_players:n
+   });
+   if(start.error) console.warn("Presence countdown start:",start.error);
+   const fresh=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
+   if(!fresh.error) m=fresh.data;
+ }
  if(m.status==="waiting"){
   queueStatus.textContent="WAITING FOR PLAYERS";
   queueTimer.textContent="Minimum "+(m.min_players||2)+" players required";
   if(n>=Number(m.min_players||2)) ensureQueueCountdownStarted(m,n);
 }
- if(m.status==="countdown"){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0)authClient.rpc("lock_match_if_ready",{requested_match:dbMatchId});}
+ if(m.status==="countdown" && n>=Number(m.min_players||2)){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0){
+  queueTimer.textContent="STARTING...";
+  authClient.rpc("advance_queue_presence_at_zero",{requested_match:dbMatchId,connected_players:queuePresenceCount})
+    .then(({error})=>{if(error)console.warn("Queue advance:",error);});
+}}
  if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
  if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
 }
 async function dbLeaveQueue(){
+ if(typeof stopQueuePresence==="function") await stopQueuePresence();
+ if(typeof stopReliableHeartbeat==="function") stopReliableHeartbeat();
+ stopMatchHeartbeat();
  if(typeof bombLoop!=="undefined"&&bombLoop){clearInterval(bombLoop);bombLoop=null;}
  if(typeof bombHud!=="undefined"&&bombHud)bombHud.style.display="none";
  if(typeof bombResultScreen!=="undefined"&&bombResultScreen)bombResultScreen.style.display="none";if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="none");}
@@ -1882,4 +1928,158 @@ async function ensureQueueCountdownStarted(match, playerCount){
   // so use the dedicated RPC installed by START-QUEUE-COUNTDOWN-FIX.sql.
   const r=await authClient.rpc("start_queue_countdown_if_ready",{requested_match:dbMatchId});
   if(r.error) console.warn("Countdown start RPC:",r.error);
+}
+
+
+// ===== SUPABASE QUEUE DISCONNECT / HEARTBEAT =====
+let matchHeartbeatTimer=null;
+let disconnectCleanupTimer=null;
+
+async function sendMatchHeartbeat(){
+  if(!dbMatchId || !currentUser?.id) return;
+  try{
+    await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
+  }catch(e){ console.warn("Match heartbeat:",e); }
+}
+
+function startMatchHeartbeat(){
+  stopMatchHeartbeat();
+  sendMatchHeartbeat();
+  matchHeartbeatTimer=setInterval(sendMatchHeartbeat,5000);
+
+  // Any connected player may request stale-player cleanup.
+  disconnectCleanupTimer=setInterval(async()=>{
+    if(!dbMatchId)return;
+    try{
+      await authClient.rpc("cleanup_disconnected_match_players",{requested_match:dbMatchId});
+    }catch(e){ console.warn("Disconnect cleanup:",e); }
+  },5000);
+}
+
+function stopMatchHeartbeat(){
+  if(matchHeartbeatTimer){clearInterval(matchHeartbeatTimer);matchHeartbeatTimer=null;}
+  if(disconnectCleanupTimer){clearInterval(disconnectCleanupTimer);disconnectCleanupTimer=null;}
+}
+
+async function leaveDatabaseMatchNow(){
+  stopMatchHeartbeat();
+  if(!dbMatchId)return;
+  try{
+    await authClient.rpc("leave_game_match",{requested_match:dbMatchId});
+  }catch(e){console.warn("Leave match:",e);}
+}
+
+// Best-effort normal browser exits. The heartbeat cleanup is the reliable fallback
+// when a Chromebook/tab closes before this request completes.
+window.addEventListener("pagehide",()=>{ leaveDatabaseMatchNow(); });
+window.addEventListener("beforeunload",()=>{ leaveDatabaseMatchNow(); });
+
+
+// ===== RELIABLE SUPABASE MATCH HEARTBEAT V2 =====
+let reliableHeartbeatTimer=null;
+let reliableCleanupTimer=null;
+
+async function reliableHeartbeat(){
+  if(!dbMatchId || !currentUser?.id) return false;
+  const {data,error}=await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
+  if(error){console.warn("Heartbeat failed:",error);return false;}
+  return data===true;
+}
+
+async function startReliableHeartbeat(){
+  stopReliableHeartbeat();
+  // Do not wait for the first interval tick.
+  await reliableHeartbeat();
+  reliableHeartbeatTimer=setInterval(reliableHeartbeat,3000);
+  reliableCleanupTimer=setInterval(async()=>{
+    if(!dbMatchId)return;
+    const {error}=await authClient.rpc("cleanup_disconnected_match_players",{requested_match:dbMatchId});
+    if(error)console.warn("Cleanup failed:",error);
+  },5000);
+}
+
+function stopReliableHeartbeat(){
+  if(reliableHeartbeatTimer){clearInterval(reliableHeartbeatTimer);reliableHeartbeatTimer=null;}
+  if(reliableCleanupTimer){clearInterval(reliableCleanupTimer);reliableCleanupTimer=null;}
+}
+
+
+// ===== SUPABASE REALTIME PRESENCE QUEUE V1 =====
+// Presence is the source of truth for who is actually connected to the queue.
+let queuePresenceChannel=null;
+let queuePresenceCount=0;
+let queuePresenceUsers=[];
+
+function flattenQueuePresence(state){
+  const rows=[];
+  for(const key of Object.keys(state||{})){
+    for(const p of (state[key]||[])){
+      if(p && p.user_id) rows.push(p);
+    }
+  }
+  const unique=new Map();
+  for(const p of rows) unique.set(p.user_id,p);
+  return [...unique.values()];
+}
+
+async function stopQueuePresence(){
+  if(!queuePresenceChannel)return;
+  try{await queuePresenceChannel.untrack();}catch(_){}
+  try{await authClient.removeChannel(queuePresenceChannel);}catch(_){}
+  queuePresenceChannel=null;
+  queuePresenceCount=0;
+  queuePresenceUsers=[];
+}
+
+async function startQueuePresence(){
+  await stopQueuePresence();
+  if(!dbMatchId || !currentUser?.id)return;
+
+  queuePresenceChannel=authClient.channel("queue-presence:"+dbMatchId,{
+    config:{presence:{key:currentUser.id}}
+  });
+
+  queuePresenceChannel.on("presence",{event:"sync"},async()=>{
+    if(!queuePresenceChannel)return;
+    queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
+    queuePresenceCount=queuePresenceUsers.length;
+
+    // Synchronize DB queue membership to the actual Presence members.
+    const ids=queuePresenceUsers.map(x=>x.user_id);
+    const {error}=await authClient.rpc("sync_queue_from_presence",{
+      requested_match:dbMatchId,
+      active_user_ids:ids
+    });
+    if(error)console.warn("Presence queue sync:",error);
+
+    // Server decides waiting/countdown/loading using the Presence count supplied
+    // by the authenticated room members.
+    const r=await authClient.rpc("update_queue_from_presence",{
+      requested_match:dbMatchId,
+      connected_players:queuePresenceCount
+    });
+    if(r.error)console.warn("Presence queue state:",r.error);
+  });
+
+  await new Promise((resolve,reject)=>{
+    queuePresenceChannel.subscribe(async status=>{
+      if(status==="SUBSCRIBED"){
+        const {error}=await queuePresenceChannel.track({
+          user_id:currentUser.id,
+          username:currentUsername||"Player",
+          online_at:new Date().toISOString()
+        });
+        if(error)reject(error); else resolve();
+      }
+      if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")reject(new Error("Queue Presence connection failed"));
+    });
+  });
+}
+
+async function presenceQueueRefresh(){
+  if(!dbMatchId)return;
+  if(queuePresenceChannel){
+    queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
+    queuePresenceCount=queuePresenceUsers.length;
+  }
 }

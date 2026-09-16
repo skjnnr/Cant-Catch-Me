@@ -1,0 +1,6 @@
+Presence Queue State Fix
+- If Presence sees fewer than min_players, UI immediately returns to WAITING FOR PLAYERS.
+- Supabase countdown timestamps are cleared at the same time.
+- When the second player joins, a fresh 30-second countdown is created.
+- Expired countdowns with enough connected players advance to loading.
+- Minimum remains 2 for testing.
