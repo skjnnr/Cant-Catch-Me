@@ -14,8 +14,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x405040, 1.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+scene.add(new THREE.HemisphereLight(0xdde8e8, 0x30382f, 1.05));
+const sun = new THREE.DirectionalLight(0xfff4df, 1.05);
 sun.position.set(50, 90, 40);
 sun.castShadow = true;
 scene.add(sun);
@@ -26,14 +26,14 @@ function makeGrassTexture() {
   c.width = c.height = 256;
   const x = c.getContext("2d");
 
-  x.fillStyle = "#3f8f42";
+  x.fillStyle = "#2f6634";
   x.fillRect(0,0,256,256);
 
   // mottled soil/grass variation
   for(let i=0;i<3500;i++) {
-    const g = 75 + Math.floor(Math.random()*65);
-    const r = 35 + Math.floor(Math.random()*35);
-    const b = 30 + Math.floor(Math.random()*30);
+    const g = 55 + Math.floor(Math.random()*45);
+    const r = 28 + Math.floor(Math.random()*25);
+    const b = 27 + Math.floor(Math.random()*22);
     x.fillStyle = `rgba(${r},${g},${b},${0.10+Math.random()*0.20})`;
     const px=Math.random()*256, py=Math.random()*256;
     x.fillRect(px,py,1+Math.random()*2,1+Math.random()*4);
@@ -43,7 +43,7 @@ function makeGrassTexture() {
   x.lineWidth=1;
   for(let i=0;i<650;i++) {
     const px=Math.random()*256, py=Math.random()*256;
-    x.strokeStyle=Math.random()>.5?"rgba(35,105,40,.35)":"rgba(110,155,75,.25)";
+    x.strokeStyle=Math.random()>.5?"rgba(25,75,30,.32)":"rgba(75,105,58,.20)";
     x.beginPath();
     x.moveTo(px,py);
     x.lineTo(px+(Math.random()-0.5)*2,py-2-Math.random()*5);
@@ -63,12 +63,12 @@ function makeRoadTexture() {
   c.width = c.height = 256;
   const x = c.getContext("2d");
 
-  x.fillStyle="#50565b";
+  x.fillStyle="#353a3e";
   x.fillRect(0,0,256,256);
 
   // asphalt aggregate
   for(let i=0;i<5000;i++) {
-    const v=55+Math.floor(Math.random()*65);
+    const v=42+Math.floor(Math.random()*45);
     const a=.06+Math.random()*.20;
     x.fillStyle=`rgba(${v},${v},${v},${a})`;
     const size=Math.random()<.85?1:2;
@@ -157,7 +157,7 @@ box(0,.05,14,220,.08,3,M.sidewalk);
 
 // Road markings make the streets read more clearly as asphalt roads.
 const lineMat = new THREE.MeshStandardMaterial({
-  color:0xe8d46a,
+  color:0xa99754,
   roughness:.85
 });
 
