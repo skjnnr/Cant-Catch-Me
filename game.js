@@ -564,8 +564,9 @@ function requestMouse() {
 if(startButton) {
   startButton.addEventListener("click",()=>{
     started=true;
+    if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
     if(startScreen) startScreen.style.display="none";
-  const inGameLogout=document.getElementById("logout-button"); if(inGameLogout) inGameLogout.style.display="none";
+  const inGameLogout=document.getElementById("logout-btn"); if(inGameLogout) inGameLogout.style.display="none";
     keys.clear();
     requestMouse();
   });
@@ -907,19 +908,26 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 function showMainMenu(){
   started=false;
-  paused=false;
-  clearMovementKeys?.();
-  pressed?.clear?.();
+  settingsOpen=false;
+  keys.clear();
   document.exitPointerLock?.();
-  if(settings) settings.style.display="none";
+
+  if(settingsEl) settingsEl.style.display="none";
   if(startScreen) startScreen.style.display="none";
+  if(loadingScreen) loadingScreen.style.display="none";
   if(mapSelectScreen) mapSelectScreen.style.display="flex";
-  const inGameLogout=document.getElementById("logout-button");
-  if(inGameLogout) inGameLogout.style.display="none";
+
+  // The standalone in-game logout button must never appear.
+  if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
+
   refreshMainMenuIdentity();
   syncMenuOnlineCount();
 }
-document.getElementById("back-main-menu")?.addEventListener("click",showMainMenu);
+document.getElementById("back-main-menu")?.addEventListener("click",(e)=>{
+  e.preventDefault();
+  e.stopPropagation();
+  showMainMenu();
+});
 
 document.getElementById("menu-select")?.addEventListener("click",()=>{
   document.querySelector(".ccm-map-panel")?.scrollIntoView({behavior:"smooth",block:"center"});
@@ -938,7 +946,7 @@ document.getElementById("credits-close")?.addEventListener("click",()=>{
   document.getElementById("credits-panel").style.display="none";
 });
 document.getElementById("menu-logout")?.addEventListener("click",()=>{
-  document.getElementById("logout-button")?.click();
+  document.getElementById("logout-btn")?.click();
 });
 function syncMenuOnlineCount(){
   const src=document.getElementById("player-count");
@@ -1001,7 +1009,7 @@ async function enterGame(user){
   refreshMainMenuIdentity();
   pendingMap=selectedMap;
   document.querySelectorAll(".map-card").forEach(c=>c.classList.toggle("selected",c.dataset.map===pendingMap));
-  if(earlyLogoutBtn) earlyLogoutBtn.style.display="block";
+  if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
   if(document.activeElement && typeof document.activeElement.blur==="function") document.activeElement.blur();
   clearMovementKeys();
   window.focus();

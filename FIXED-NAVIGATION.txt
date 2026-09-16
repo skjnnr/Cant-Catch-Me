@@ -1,0 +1,7 @@
+Fixed two concrete bugs:
+1. Code used logout-button, but HTML uses logout-btn.
+2. Back-to-menu used an undefined settings variable instead of settingsEl.
+
+The standalone LOG OUT button is now forced hidden after login and during gameplay.
+Main-menu LOG OUT still works by triggering the real logout-btn handler.
+BACK TO MAIN MENU closes settings, exits pointer lock, stops gameplay, and shows the post-login main menu.
