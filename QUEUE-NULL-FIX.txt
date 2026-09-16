@@ -1,0 +1,1 @@
+Fixed public queue null-style crash. Queue/loading UI is guaranteed before use and optional lobby UI references are null-safe.

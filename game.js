@@ -1150,7 +1150,7 @@ async function enterSelectedLobby(mode,code=""){
   window.forceRoomLeaderboard?.(true);
   roomLeaderboard?.classList.add("in-room");
   setTimeout(()=>window.refreshRoomLeaderboard?.(),100);
-  lobbyChoiceScreen.style.display="none";
+  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none");
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
   loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
@@ -1184,14 +1184,14 @@ document.getElementById("join-public")?.addEventListener("click",async()=>{
   if(btn) btn.textContent=old||"JOIN PUBLIC";
 });
 document.getElementById("private-lobby-option")?.addEventListener("click",()=>{
-  lobbyChoiceScreen.style.display="none"; privateCodeScreen.style.display="flex";
+  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none"); privateCodeScreen.style.display="flex";
   document.getElementById("private-code-message").textContent="";
 });
 document.getElementById("lobby-choice-back")?.addEventListener("click",()=>{
-  lobbyChoiceScreen.style.display="none"; mapSelectScreen.style.display="flex";
+  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none"); mapSelectScreen.style.display="flex";
 });
 document.getElementById("private-code-back")?.addEventListener("click",()=>{
-  privateCodeScreen.style.display="none"; lobbyChoiceScreen.style.display="flex";
+  privateCodeScreen.style.display="none"; lobbyChoiceScreen && (lobbyChoiceScreen.style.display="flex");
 });
 document.getElementById("create-private")?.addEventListener("click",async()=>{
   const code=makeLobbyCode();
@@ -1700,6 +1700,26 @@ setInterval(()=>{
 })();
 
 
+
+// ===== QUEUE UI SAFETY BOOTSTRAP =====
+function ensureQueueUI(){
+  let q=document.getElementById("queue-overlay");
+  if(!q){
+    q=document.createElement("div");
+    q.id="queue-overlay";
+    q.innerHTML=`<div class="queue-card"><div class="queue-logo">CAN'T CATCH ME</div><div id="queue-status">WAITING FOR PLAYERS</div><div id="queue-count">0 / 12 PLAYERS</div><div id="queue-timer">Minimum 6 players required</div><div class="queue-note">Players can join until the countdown reaches 0.</div><button id="queue-leave-btn">BACK TO MAIN MENU</button></div>`;
+    document.body.appendChild(q);
+  }
+  let r=document.getElementById("round-loading-overlay");
+  if(!r){
+    r=document.createElement("div");
+    r.id="round-loading-overlay";
+    r.innerHTML=`<div class="round-card"><div id="round-loading-title">ROUND LOADING</div><div id="round-loading-text">Selecting the bomb holder...</div></div>`;
+    document.body.appendChild(r);
+  }
+}
+ensureQueueUI();
+
 // ===== DATABASE PUBLIC QUEUE =====
 const queueOverlay=document.getElementById("queue-overlay"),queueStatus=document.getElementById("queue-status"),
 queueCount=document.getElementById("queue-count"),queueTimer=document.getElementById("queue-timer"),
@@ -1719,7 +1739,7 @@ async function dbJoinPublicQueue(){
  if(r.error)throw r.error;if(!r.data?.success)throw new Error(r.data?.error||"Join failed");
  dbMatchId=r.data.match_id;dbMatchCode=r.data.room_code;lobbyMode="public";lobbyCode=dbMatchCode;
  if(roomCodeText)roomCodeText.textContent=dbMatchCode;if(roomTypeLabel)roomTypeLabel.textContent="PUBLIC ROOM CODE";
- queueOverlay.style.display="flex";await dbRefreshQueue();queuePoll=setInterval(dbRefreshQueue,500);
+ queueOverlay && (queueOverlay.style.display="flex");await dbRefreshQueue();queuePoll=setInterval(dbRefreshQueue,500);
 }
 async function dbRefreshQueue(){
  if(!dbMatchId)return;
@@ -1729,13 +1749,13 @@ async function dbRefreshQueue(){
  queueCount.textContent=n+" / 12 PLAYERS";
  if(m.status==="waiting"){queueStatus.textContent="WAITING FOR PLAYERS";queueTimer.textContent="Minimum 6 players required";}
  if(m.status==="countdown"){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0)authClient.rpc("lock_match_if_ready",{requested_match:dbMatchId});}
- if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay.style.display="none";roundLoadingOverlay.style.display="flex";document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
- if(m.status==="active"){queueOverlay.style.display="none";roundLoadingOverlay.style.display="flex";document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay.style.display="none";roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
+ if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
+ if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
 }
-async function dbLeaveQueue(){if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay.style.display="none";roundLoadingOverlay.style.display="none";}
+async function dbLeaveQueue(){if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="none");}
 document.getElementById("queue-leave-btn")?.addEventListener("click",async()=>{await dbLeaveQueue();await showMainMenu();});
 
 (function(){
  const old=document.getElementById("join-public");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
- btn.addEventListener("click",async()=>{const t=btn.textContent;btn.disabled=true;btn.textContent="JOINING QUEUE...";try{lobbyChoiceScreen.style.display="none";await stopCurrentLobbyChannel();multiplayerLoggedIn=true;await dbJoinPublicQueue();}catch(e){console.error(e);lobbyChoiceScreen.style.display="flex";alert("Could not join public queue: "+(e.message||e));}finally{btn.disabled=false;btn.textContent=t;}});
+ btn.addEventListener("click",async()=>{const t=btn.textContent;btn.disabled=true;btn.textContent="JOINING QUEUE...";try{lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none");await stopCurrentLobbyChannel();multiplayerLoggedIn=true;await dbJoinPublicQueue();}catch(e){console.error(e);lobbyChoiceScreen && (lobbyChoiceScreen.style.display="flex");alert("Could not join public queue: "+(e.message||e));}finally{btn.disabled=false;btn.textContent=t;}});
 })();
