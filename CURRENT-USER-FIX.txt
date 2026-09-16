@@ -1,0 +1,1 @@
+Fixes Join Public: currentUser is not defined. Presence now uses the build's existing authUser variable and falls back to the active Supabase session. No new SQL required if the Presence Queue State SQL was already run.

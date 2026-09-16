@@ -1852,7 +1852,7 @@ async function syncBombGameplay(){
    // first 5 seconds are the runners' head start.
    headStartUntil=Date.now()+5000;
    roundLoadingOverlay.style.display="flex";
-   const meHas=m.bomb_holder===currentUser?.id || m.bomb_holder===myId;
+   const meHas=m.bomb_holder===authUser?.id || m.bomb_holder===myId;
    document.getElementById("round-loading-title").textContent="ROUND "+m.round_number;
    document.getElementById("round-loading-text").textContent=meHas
       ?"YOU START WITH THE BOMB — WAIT 5 SECONDS!"
@@ -1869,11 +1869,11 @@ async function syncBombGameplay(){
      setTimeout(()=>{bombDetonationRequested=false;syncBombGameplay();},400);
    }
    // Attempt tag only if this client is the authoritative current holder.
-   const myUid=currentUser?.id;
+   const myUid=authUser?.id;
    if(myUid&&m.bomb_holder===myUid&&Date.now()>=headStartUntil) attemptBombTag(players);
  } else if(m.status==="between_rounds"){
    bombHud.style.display="none";
-   const me=players.find(p=>p.user_id===currentUser?.id);
+   const me=players.find(p=>p.user_id===authUser?.id);
    if(me?.eliminated){showBombResult(false);}
    else if(!queueStarting){
      queueStarting=true;
@@ -1884,7 +1884,7 @@ async function syncBombGameplay(){
    }
  } else if(m.status==="finished"){
    bombHud.style.display="none";
-   showBombResult(m.winner_id===currentUser?.id);
+   showBombResult(m.winner_id===authUser?.id);
  }
 }
 
@@ -1894,7 +1894,7 @@ async function attemptBombTag(players){
  // Remote models already contain the networked positions. Tag radius ~1.65m.
  for(const [id,r] of remotes){
    const target=players.find(p=>p.user_id===id || p.username===r.username);
-   if(!target||target.eliminated||target.user_id===currentUser?.id||!r.m)continue;
+   if(!target||target.eliminated||target.user_id===authUser?.id||!r.m)continue;
    const dx=player.x-r.m.position.x,dz=player.z-r.m.position.z;
    if(Math.hypot(dx,dz)<=1.65){
      tagCooldownUntil=Date.now()+1200;
@@ -1936,7 +1936,7 @@ let matchHeartbeatTimer=null;
 let disconnectCleanupTimer=null;
 
 async function sendMatchHeartbeat(){
-  if(!dbMatchId || !currentUser?.id) return;
+  if(!dbMatchId || !authUser?.id) return;
   try{
     await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
   }catch(e){ console.warn("Match heartbeat:",e); }
@@ -1980,7 +1980,7 @@ let reliableHeartbeatTimer=null;
 let reliableCleanupTimer=null;
 
 async function reliableHeartbeat(){
-  if(!dbMatchId || !currentUser?.id) return false;
+  if(!dbMatchId || !authUser?.id) return false;
   const {data,error}=await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
   if(error){console.warn("Heartbeat failed:",error);return false;}
   return data===true;
@@ -2033,10 +2033,15 @@ async function stopQueuePresence(){
 
 async function startQueuePresence(){
   await stopQueuePresence();
-  if(!dbMatchId || !currentUser?.id)return;
+  if(!dbMatchId)return;
+  if(!authUser?.id){
+    const {data:{session}}=await authClient.auth.getSession();
+    authUser=session?.user||null;
+  }
+  if(!authUser?.id) throw new Error("No authenticated Supabase user found");
 
   queuePresenceChannel=authClient.channel("queue-presence:"+dbMatchId,{
-    config:{presence:{key:currentUser.id}}
+    config:{presence:{key:authUser.id}}
   });
 
   queuePresenceChannel.on("presence",{event:"sync"},async()=>{
@@ -2065,7 +2070,7 @@ async function startQueuePresence(){
     queuePresenceChannel.subscribe(async status=>{
       if(status==="SUBSCRIBED"){
         const {error}=await queuePresenceChannel.track({
-          user_id:currentUser.id,
+          user_id:authUser.id,
           username:currentUsername||"Player",
           online_at:new Date().toISOString()
         });
