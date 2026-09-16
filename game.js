@@ -239,7 +239,9 @@ const player = {
   z: 72,
   yaw: 0,
   pitch: 0,
-  radius: .48
+  radius: .48,
+  velocityY: 0,
+  onGround: true
 };
 
 camera.position.set(player.x,player.y,player.z);
@@ -248,8 +250,14 @@ camera.position.set(player.x,player.y,player.z);
 // Use BOTH KeyboardEvent.code and KeyboardEvent.key.
 // Movement does NOT require pointer lock.
 const keys = new Set();
+let jumpQueued = false;
 
 function down(e) {
+  // Queue one jump per Space press (no auto-bunny-hop from key repeat).
+  if (e.code === "Space" && !e.repeat) {
+    jumpQueued = true;
+    e.preventDefault();
+  }
   keys.add(e.code);
   keys.add((e.key || "").toLowerCase());
   if(["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code))
@@ -268,13 +276,24 @@ function held(code,key) {
 }
 
 function collisionAt(x,z) {
+  // While the player's feet are at crate-top height, don't let the old
+  // flat 2D crate collider prevent stepping horizontally onto the cube.
+  const feet = playerFeetY();
+
   for(const c of colliders) {
     if(
       x+player.radius>c.minX &&
       x-player.radius<c.maxX &&
       z+player.radius>c.minZ &&
       z-player.radius<c.maxZ
-    ) return true;
+    ) {
+      // Small square colliders are crates/tree trunks. When high enough,
+      // permit crossing a crate footprint so landing on top is possible.
+      const w = c.maxX-c.minX;
+      const d = c.maxZ-c.minZ;
+      if(w <= 2.2 && d <= 2.2 && feet >= 1.65) continue;
+      return true;
+    }
   }
   return false;
 }
@@ -345,6 +364,96 @@ document.addEventListener("mousemove",e=>{
   player.pitch = Math.max(-1.5,Math.min(1.5,player.pitch));
 });
 
+
+// ---------- JUMPING ----------
+// Player eye height while standing on the ground.
+const GROUND_EYE_Y = 1.7;
+
+// Gravity and jump speed are tuned so the player can get on top of the
+// 2-unit-high crate cubes used around the map.
+const GRAVITY = 20;
+const JUMP_SPEED = 8.6;
+
+// The player's feet are eye-height below camera Y.
+function playerFeetY() {
+  return player.y - GROUND_EYE_Y;
+}
+
+// Find a crate/interior box top under the player's horizontal footprint.
+// Existing colliders are 2D, so this uses scene boxes that are close enough
+// to act as jumpable platforms. For this Stage 3 map, the common cubes are
+// 2 units tall, so their top is y=2.
+function platformTopAt(x, z, previousFeet, nextFeet) {
+  // Ground is always a valid platform.
+  let best = 0;
+
+  // Jumpable cube locations from the map. Each crate is ~2.1 x 2.1 and 2 high.
+  const centers = [];
+  for (const [cx,cz] of [[-25,-30],[25,-30],[-25,30],[25,30],[-78,-72],[78,72]]) {
+    for(let i=0;i<4;i++) {
+      centers.push([
+        cx + (i%2)*2.4 - 1.2,
+        cz + Math.floor(i/2)*2.4 - 1.2,
+        2
+      ]);
+    }
+  }
+
+  for (const [cx,cz,top] of centers) {
+    const half = 1.05;
+    const horizontallyOn =
+      x + player.radius > cx-half &&
+      x - player.radius < cx+half &&
+      z + player.radius > cz-half &&
+      z - player.radius < cz+half;
+
+    // Only land when falling through the top surface.
+    if (horizontallyOn && previousFeet >= top - 0.08 && nextFeet <= top + 0.08) {
+      best = Math.max(best, top);
+    }
+  }
+  return best;
+}
+
+function updateJump(dt) {
+  if(!started || settingsOpen) {
+    jumpQueued = false;
+    return;
+  }
+
+  if(jumpQueued && player.onGround) {
+    player.velocityY = JUMP_SPEED;
+    player.onGround = false;
+  }
+  jumpQueued = false;
+
+  const previousFeet = playerFeetY();
+  player.velocityY -= GRAVITY * dt;
+  player.y += player.velocityY * dt;
+  const nextFeet = playerFeetY();
+
+  if(player.velocityY <= 0) {
+    const top = platformTopAt(player.x, player.z, previousFeet, nextFeet);
+
+    // Land on ground or a cube top.
+    if(nextFeet <= top && previousFeet >= top - 0.15) {
+      player.y = GROUND_EYE_Y + top;
+      player.velocityY = 0;
+      player.onGround = true;
+      return;
+    }
+  }
+
+  // Ground fallback.
+  if(playerFeetY() <= 0) {
+    player.y = GROUND_EYE_Y;
+    player.velocityY = 0;
+    player.onGround = true;
+  } else {
+    player.onGround = false;
+  }
+}
+
 function updateMovement(dt) {
   if(!started || settingsOpen) return;
 
@@ -380,6 +489,7 @@ function animate(now) {
   last=now;
 
   updateMovement(dt);
+  updateJump(dt);
   updateCamera();
   renderer.render(scene,camera);
 }
