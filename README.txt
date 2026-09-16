@@ -1,13 +1,18 @@
-CAN'T CATCH ME — STAGE 2 FIXED
+CAN'T CATCH ME — STAGE 2 REBUILT
 
-This version fixes first-person WASD movement:
-- W moves forward in the direction you are looking.
-- S moves backward.
-- A moves left.
-- D moves right.
-- Diagonal movement is normalized.
-- Movement slides along walls instead of getting stuck.
-- Shift still sprints.
+This rebuild replaces the previous movement controller.
 
-Replace the game.js file in your GitHub repository with this one.
-Or replace all three files with this ZIP.
+Controls:
+W = forward
+S = backward
+A = left
+D = right
+Shift = sprint
+Mouse = look around
+ESC = unlock mouse
+
+IMPORTANT:
+Replace the old index.html, style.css, and game.js files in GitHub with these files.
+
+GitHub Pages:
+Settings > Pages > Deploy from branch > main > / (root).
