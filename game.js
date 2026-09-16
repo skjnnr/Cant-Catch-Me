@@ -588,6 +588,33 @@ window.addEventListener("resize",()=>{
 });
 
 
+
+// Prevent typing on the login/create-account screen from leaving movement keys "stuck".
+function clearMovementKeys(){
+  if(typeof keys!=="undefined"){
+    for(const k in keys) keys[k]=false;
+  }
+}
+document.addEventListener("focusin",e=>{
+  if(e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA")){
+    clearMovementKeys();
+  }
+});
+document.addEventListener("focusout",clearMovementKeys);
+window.addEventListener("blur",clearMovementKeys);
+
+
+document.addEventListener("keydown",e=>{
+  const typing=e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA");
+  if(typing && ["KeyW","KeyA","KeyS","KeyD","ShiftLeft","ShiftRight","Space"].includes(e.code)){
+    clearMovementKeys();
+  }
+},true);
+document.addEventListener("keyup",e=>{
+  const typing=e.target && (e.target.tagName==="INPUT" || e.target.tagName==="TEXTAREA");
+  if(typing) clearMovementKeys();
+},true);
+
 // ================= ACCOUNT SYSTEM =================
 // Uses the same Supabase browser client as multiplayer.
 const AUTH_URL="https://wsucaukqrommcshdpdxy.supabase.co";
@@ -611,7 +638,12 @@ function cleanUsername(v){
 }
 async function enterGame(user){
   currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
+  multiplayerLoggedIn=true;
   authScreen.style.display="none";
+  if(document.activeElement && typeof document.activeElement.blur==="function") document.activeElement.blur();
+  clearMovementKeys();
+  window.focus();
+  if(typeof startMultiplayer==="function") startMultiplayer();
 }
 
 document.getElementById("signup-btn").onclick=async()=>{
@@ -621,14 +653,33 @@ document.getElementById("signup-btn").onclick=async()=>{
   if(username.length<3){msg("Username must be at least 3 characters.");return;}
   if(!email){msg("Enter an email.");return;}
   if(password.length<6){msg("Password must be at least 6 characters.");return;}
+  msg("Checking username...");
+  // `claim_username` is an atomic database RPC backed by a UNIQUE primary key.
+  // It prevents two accounts from successfully claiming the same normalized name.
+  const normalizedUsername=username.toLowerCase();
+
   msg("Creating account...");
   const {data,error}=await authClient.auth.signUp({
     email,password,options:{data:{username}}
   });
   if(error){msg(error.message);return;}
-  // With Confirm Email disabled in Supabase, signUp returns a session immediately.
-  if(data.session){await enterGame(data.user);}
-  else msg("Account created. Disable Confirm Email in Supabase Auth settings, then log in.");
+
+  // Claim the username only after Supabase creates/authenticates the account.
+  // The SQL setup file makes this operation atomic and case-insensitively unique.
+  if(data.session && data.user){
+    const {data:claimed,error:claimError}=await authClient.rpc("claim_username",{
+      requested_username: username
+    });
+    if(claimError || claimed!==true){
+      await authClient.auth.signOut();
+      msg("That username is already taken. Choose another username.");
+      return;
+    }
+    await authClient.auth.updateUser({data:{username}});
+    await enterGame({...data.user,user_metadata:{...(data.user.user_metadata||{}),username}});
+  } else {
+    msg("Account created, but no login session was returned. Make sure Confirm Email is OFF in Supabase.");
+  }
 };
 
 document.getElementById("login-btn").onclick=async()=>{
@@ -651,6 +702,9 @@ const SB_KEY="sb_publishable_eksR6ebuyO98BaYm5pVTdg__4exI5Xc";
 const myId=crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2);
 const remotes=new Map();
 const mpStatus=document.getElementById("mp-status"),mpCount=document.getElementById("mp-count");
+let multiplayerLoggedIn = false;
+if(mpStatus) mpStatus.textContent="Login required";
+if(mpCount) mpCount.textContent="Players: 0";
 
 function makeNameSprite(name){
  const c=document.createElement("canvas");c.width=512;c.height=128;
@@ -673,9 +727,20 @@ function remoteModel(username="Player"){
  g.add(makeNameSprite(username));
  scene.add(g);return g;
 }
-if(window.supabase?.createClient){
+let multiplayerStarted=false;
+let ch=null;
+
+function startMultiplayer(){
+ if(multiplayerStarted || !multiplayerLoggedIn) return;
+ if(!window.supabase?.createClient){
+   if(mpStatus)mpStatus.textContent="Supabase failed to load";
+   return;
+ }
+ multiplayerStarted=true;
+ if(mpStatus)mpStatus.textContent="Connecting...";
+
  const client=authClient;
- const ch=client.channel("cant-catch-me:public-1",{config:{broadcast:{self:false},presence:{key:myId}}});
+ ch=client.channel("cant-catch-me:public-1",{config:{broadcast:{self:false},presence:{key:myId}}});
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
@@ -698,8 +763,10 @@ if(window.supabase?.createClient){
      playerModel.add(localLabel);
    }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
-}else if(mpStatus)mpStatus.textContent="Supabase failed to load";
+}
+// Multiplayer intentionally does NOT start here.
+// enterGame() starts it only after Supabase confirms an authenticated session.
 // ---- END MULTIPLAYER ----

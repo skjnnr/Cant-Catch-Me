@@ -1,0 +1,14 @@
+CAN'T CATCH ME — UNIQUE USERNAME SETUP
+
+IMPORTANT: Run SUPABASE-UNIQUE-USERNAMES.sql once in your Supabase SQL Editor.
+
+1. Open your Supabase project.
+2. Open SQL Editor.
+3. Create a new query.
+4. Copy everything from SUPABASE-UNIQUE-USERNAMES.sql into it.
+5. Run the query.
+
+After that, usernames are one-per-account and case-insensitively unique.
+Example: if someone owns PlayerOne, nobody can create playerone or PLAYERONE.
+
+The database, not just JavaScript, enforces the uniqueness.
