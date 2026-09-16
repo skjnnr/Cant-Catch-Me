@@ -1,0 +1,6 @@
+LIVE ROLE UPDATE
+
+The game re-checks the logged-in player's public.player_roles row every 5 seconds.
+If OWNER/MOD is added, changed, or removed, the local nameplate updates automatically.
+The changed role is also broadcast to connected multiplayer clients.
+No logout/login is required.

@@ -661,6 +661,49 @@ function cleanUsername(v){
 }
 
 
+
+let currentAuthUser=null;
+let roleCheckTimer=null;
+
+function rebuildLocalRoleLabel(){
+  if(typeof playerModel==="undefined" || !playerModel) return;
+  if(typeof localLabel!=="undefined" && localLabel){
+    playerModel.remove(localLabel);
+    localLabel.material?.map?.dispose?.();
+    localLabel.material?.dispose?.();
+    localLabel=null;
+  }
+  localLabel=makeNameSprite(currentUsername,currentRole);
+  playerModel.add(localLabel);
+}
+
+async function refreshRoleFromSupabase(){
+  if(!currentAuthUser?.id || !multiplayerLoggedIn) return;
+  const previousRole=currentRole;
+  await loadCurrentPlayerRole(currentAuthUser);
+  if(previousRole!==currentRole){
+    rebuildLocalRoleLabel();
+    // Immediately tell other clients instead of waiting for the next normal network update.
+    if(ch){
+      try{
+        await ch.send({type:"broadcast",event:"state",payload:{
+          id:myId,userId:currentAuthUser.id,username:currentUsername,role:currentRole,
+          x:player.x,y:player.y,z:player.z,yaw:player.yaw
+        }});
+      }catch(e){ console.warn("Role broadcast refresh failed",e); }
+    }
+  }
+}
+
+function startLiveRoleChecks(){
+  if(roleCheckTimer) clearInterval(roleCheckTimer);
+  roleCheckTimer=setInterval(refreshRoleFromSupabase,5000);
+}
+
+function stopLiveRoleChecks(){
+  if(roleCheckTimer){ clearInterval(roleCheckTimer); roleCheckTimer=null; }
+}
+
 async function loadCurrentPlayerRole(user){
   currentRole="player";
   if(!user?.id) return currentRole;
@@ -681,6 +724,7 @@ async function loadCurrentPlayerRole(user){
 }
 
 async function enterGame(user){
+  currentAuthUser=user;
   try{
     await loadCurrentPlayerRole(user);
   }catch(err){
@@ -695,6 +739,7 @@ async function enterGame(user){
   clearMovementKeys();
   window.focus();
   if(typeof startMultiplayer==="function") startMultiplayer();
+  startLiveRoleChecks();
 }
 
 
@@ -769,6 +814,8 @@ showLogin();
 // ================= LOG OUT =================
 const logoutBtn=document.getElementById("logout-btn");
 async function logoutOfGame(){
+  stopLiveRoleChecks();
+  currentAuthUser=null;
   clearMovementKeys();
 
   // Leave Realtime first so this player immediately disappears from Presence.
