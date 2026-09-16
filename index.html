@@ -7,6 +7,29 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<div id="auth-screen" style="position:fixed;inset:0;z-index:1000;background:#111;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;color:white">
+  <div style="width:min(390px,86vw);background:#20252b;border:1px solid #555;border-radius:14px;padding:28px">
+    <h1 style="margin-top:0;text-align:center;letter-spacing:2px">CAN'T CATCH ME</h1>
+    <div id="auth-message" style="min-height:20px;margin-bottom:10px;text-align:center;color:#ffd27a"></div>
+    <div id="login-form">
+      <h2>Login</h2>
+      <input id="login-email" type="email" placeholder="Email" autocomplete="email" style="box-sizing:border-box;width:100%;padding:12px;margin:6px 0">
+      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" style="box-sizing:border-box;width:100%;padding:12px;margin:6px 0">
+      <button id="login-btn" style="width:100%;padding:12px;margin-top:10px">LOGIN</button>
+      <button id="show-signup" style="width:100%;padding:12px;margin-top:8px">CREATE ACCOUNT</button>
+    </div>
+    <div id="signup-form" style="display:none">
+      <h2>Create Account</h2>
+      <input id="signup-username" maxlength="20" placeholder="Username" autocomplete="username" style="box-sizing:border-box;width:100%;padding:12px;margin:6px 0">
+      <input id="signup-email" type="email" placeholder="Email" autocomplete="email" style="box-sizing:border-box;width:100%;padding:12px;margin:6px 0">
+      <input id="signup-password" type="password" placeholder="Password (6+ characters)" autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:12px;margin:6px 0">
+      <button id="signup-btn" style="width:100%;padding:12px;margin-top:10px">CREATE ACCOUNT</button>
+      <button id="show-login" style="width:100%;padding:12px;margin-top:8px">BACK TO LOGIN</button>
+    </div>
+  </div>
+</div>
+
 <div id="mp" style="position:fixed;right:14px;top:14px;z-index:50;background:#000a;color:white;padding:10px;border-radius:8px;font-family:Arial;pointer-events:none"><b>MULTIPLAYER</b><div id="mp-status">Connecting...</div><div id="mp-count">Players: 1</div></div>
 <div id="hud">
   <div id="logo">CAN'T CATCH ME</div>

@@ -587,6 +587,64 @@ window.addEventListener("resize",()=>{
   renderer.setSize(innerWidth,innerHeight);
 });
 
+
+// ================= ACCOUNT SYSTEM =================
+// Uses the same Supabase browser client as multiplayer.
+const AUTH_URL="https://wsucaukqrommcshdpdxy.supabase.co";
+const AUTH_KEY="sb_publishable_eksR6ebuyO98BaYm5pVTdg__4exI5Xc";
+const authClient=window.supabase.createClient(AUTH_URL,AUTH_KEY);
+let currentUsername="Player";
+
+const authScreen=document.getElementById("auth-screen");
+const authMessage=document.getElementById("auth-message");
+const loginForm=document.getElementById("login-form");
+const signupForm=document.getElementById("signup-form");
+
+function msg(t){ authMessage.textContent=t||""; }
+function showLogin(){signupForm.style.display="none";loginForm.style.display="block";msg("");}
+function showSignup(){loginForm.style.display="none";signupForm.style.display="block";msg("");}
+document.getElementById("show-signup").onclick=showSignup;
+document.getElementById("show-login").onclick=showLogin;
+
+function cleanUsername(v){
+  return v.trim().replace(/[^a-zA-Z0-9_-]/g,"").slice(0,20);
+}
+async function enterGame(user){
+  currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
+  authScreen.style.display="none";
+}
+
+document.getElementById("signup-btn").onclick=async()=>{
+  const username=cleanUsername(document.getElementById("signup-username").value);
+  const email=document.getElementById("signup-email").value.trim();
+  const password=document.getElementById("signup-password").value;
+  if(username.length<3){msg("Username must be at least 3 characters.");return;}
+  if(!email){msg("Enter an email.");return;}
+  if(password.length<6){msg("Password must be at least 6 characters.");return;}
+  msg("Creating account...");
+  const {data,error}=await authClient.auth.signUp({
+    email,password,options:{data:{username}}
+  });
+  if(error){msg(error.message);return;}
+  // With Confirm Email disabled in Supabase, signUp returns a session immediately.
+  if(data.session){await enterGame(data.user);}
+  else msg("Account created. Disable Confirm Email in Supabase Auth settings, then log in.");
+};
+
+document.getElementById("login-btn").onclick=async()=>{
+  const email=document.getElementById("login-email").value.trim();
+  const password=document.getElementById("login-password").value;
+  msg("Logging in...");
+  const {data,error}=await authClient.auth.signInWithPassword({email,password});
+  if(error){msg(error.message);return;}
+  await enterGame(data.user);
+};
+
+(async()=>{
+  const {data}=await authClient.auth.getSession();
+  if(data.session?.user) await enterGame(data.session.user);
+})();
+
 // ---- SUPABASE MULTIPLAYER V1 ----
 const SB_URL="https://wsucaukqrommcshdpdxy.supabase.co";
 const SB_KEY="sb_publishable_eksR6ebuyO98BaYm5pVTdg__4exI5Xc";
@@ -594,22 +652,34 @@ const myId=crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slic
 const remotes=new Map();
 const mpStatus=document.getElementById("mp-status"),mpCount=document.getElementById("mp-count");
 
-function remoteModel(){
+function makeNameSprite(name){
+ const c=document.createElement("canvas");c.width=512;c.height=128;
+ const x=c.getContext("2d");x.clearRect(0,0,c.width,c.height);
+ x.font="bold 48px Arial";x.textAlign="center";x.textBaseline="middle";
+ x.lineWidth=9;x.strokeStyle="rgba(0,0,0,.85)";x.strokeText(name,256,64);
+ x.fillStyle="#ffffff";x.fillText(name,256,64);
+ const tex=new THREE.CanvasTexture(c);
+ const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
+ const sp=new THREE.Sprite(mat);sp.scale.set(3.8,.95,1);sp.position.set(0,1.35,0);
+ return sp;
+}
+function remoteModel(username="Player"){
  const g=new THREE.Group(),skin=new THREE.MeshStandardMaterial({color:0xf1c98a}),
  blue=new THREE.MeshStandardMaterial({color:0x609bd0}),black=new THREE.MeshBasicMaterial({color:0x050505});
  const b=new THREE.Mesh(new THREE.BoxGeometry(1,1.75,.72),blue);b.position.y=-.88;g.add(b);
  const head=new THREE.Mesh(new THREE.BoxGeometry(.92,.78,.76),skin);head.position.y=.32;g.add(head);
  function p(x,y,w,h,r=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,.035),black);m.position.set(x,y,-.398);m.rotation.z=r;g.add(m)}
  p(-.2,.42,.12,.16);p(.2,.42,.12,.16);p(0,.16,.3,.055);p(-.18,.205,.12,.055,-.38);p(.18,.205,.12,.055,.38);
+ g.add(makeNameSprite(username));
  scene.add(g);return g;
 }
 if(window.supabase?.createClient){
- const client=window.supabase.createClient(SB_URL,SB_KEY);
+ const client=authClient;
  const ch=client.channel("cant-catch-me:public-1",{config:{broadcast:{self:false},presence:{key:myId}}});
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
-   if(!r){r={m:remoteModel(),t:new THREE.Vector3()};remotes.set(p.id,r)}
+   if(!r){r={m:remoteModel(p.username||"Player"),t:new THREE.Vector3()};remotes.set(p.id,r)}
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
  }).on("presence",{event:"sync"},()=>{
    const state=ch.presenceState(),ids=new Set(Object.keys(state));
@@ -617,13 +687,18 @@ if(window.supabase?.createClient){
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
  }).subscribe(async st=>{
    if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-   if(st==="SUBSCRIBED")await ch.track({id:myId,joined_at:Date.now()});
+   if(st==="SUBSCRIBED")await ch.track({id:myId,username:currentUsername,joined_at:Date.now()});
  });
  let lastNet=0;
+ let localLabel=null;
  function netLoop(t){
    requestAnimationFrame(netLoop);
+   if(!localLabel && typeof playerModel!=="undefined" && currentUsername){
+     localLabel=makeNameSprite(currentUsername);
+     playerModel.add(localLabel);
+   }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+   if(typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
 }else if(mpStatus)mpStatus.textContent="Supabase failed to load";
