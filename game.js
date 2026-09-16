@@ -1936,7 +1936,7 @@ let matchHeartbeatTimer=null;
 let disconnectCleanupTimer=null;
 
 async function sendMatchHeartbeat(){
-  if(!dbMatchId || !authUser?.id) return;
+  if(!dbMatchId || false) return;
   try{
     await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
   }catch(e){ console.warn("Match heartbeat:",e); }
@@ -1980,7 +1980,7 @@ let reliableHeartbeatTimer=null;
 let reliableCleanupTimer=null;
 
 async function reliableHeartbeat(){
-  if(!dbMatchId || !authUser?.id) return false;
+  if(!dbMatchId || false) return false;
   const {data,error}=await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
   if(error){console.warn("Heartbeat failed:",error);return false;}
   return data===true;
@@ -2034,14 +2034,13 @@ async function stopQueuePresence(){
 async function startQueuePresence(){
   await stopQueuePresence();
   if(!dbMatchId)return;
-  if(!authUser?.id){
-    const {data:{session}}=await authClient.auth.getSession();
-    authUser=session?.user||null;
-  }
-  if(!authUser?.id) throw new Error("No authenticated Supabase user found");
+
+  const sessionResult=await authClient.auth.getSession();
+  const queueUser=sessionResult?.data?.session?.user;
+  if(!queueUser?.id) throw new Error("No logged-in Supabase session found");
 
   queuePresenceChannel=authClient.channel("queue-presence:"+dbMatchId,{
-    config:{presence:{key:authUser.id}}
+    config:{presence:{key:queueUser.id}}
   });
 
   queuePresenceChannel.on("presence",{event:"sync"},async()=>{
@@ -2049,7 +2048,6 @@ async function startQueuePresence(){
     queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
     queuePresenceCount=queuePresenceUsers.length;
 
-    // Synchronize DB queue membership to the actual Presence members.
     const ids=queuePresenceUsers.map(x=>x.user_id);
     const {error}=await authClient.rpc("sync_queue_from_presence",{
       requested_match:dbMatchId,
@@ -2057,8 +2055,6 @@ async function startQueuePresence(){
     });
     if(error)console.warn("Presence queue sync:",error);
 
-    // Server decides waiting/countdown/loading using the Presence count supplied
-    // by the authenticated room members.
     const r=await authClient.rpc("update_queue_from_presence",{
       requested_match:dbMatchId,
       connected_players:queuePresenceCount
@@ -2067,16 +2063,20 @@ async function startQueuePresence(){
   });
 
   await new Promise((resolve,reject)=>{
+    let settled=false;
     queuePresenceChannel.subscribe(async status=>{
-      if(status==="SUBSCRIBED"){
+      if(status==="SUBSCRIBED"&&!settled){
+        settled=true;
         const {error}=await queuePresenceChannel.track({
-          user_id:authUser.id,
+          user_id:queueUser.id,
           username:currentUsername||"Player",
           online_at:new Date().toISOString()
         });
         if(error)reject(error); else resolve();
+      } else if((status==="CHANNEL_ERROR"||status==="TIMED_OUT")&&!settled){
+        settled=true;
+        reject(new Error("Queue Presence connection failed"));
       }
-      if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")reject(new Error("Queue Presence connection failed"));
     });
   });
 }
@@ -2087,4 +2087,10 @@ async function presenceQueueRefresh(){
     queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
     queuePresenceCount=queuePresenceUsers.length;
   }
+}
+
+
+async function getLoggedInUserId(){
+  const {data:{session}}=await authClient.auth.getSession();
+  return session?.user?.id||null;
 }

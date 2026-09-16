@@ -1,0 +1,6 @@
+Join Public authentication fix:
+- Queue Presence no longer depends on `currentUser` or `authUser`.
+- It reads the authenticated user directly from `authClient.auth.getSession()`.
+- No new Supabase SQL is required if the Presence SQL was already installed.
+JavaScript syntax checked successfully.
+Remaining legacy identifiers elsewhere in game.js: currentUser, authUser
