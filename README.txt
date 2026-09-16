@@ -1,18 +1,22 @@
-CAN'T CATCH ME — STAGE 2 REBUILT
+CAN'T CATCH ME — STAGE 3
 
-This rebuild replaces the previous movement controller.
+NEW:
+- Much larger 220 x 220 map
+- More buildings
+- Buildings have door openings and enterable interiors
+- Trees have collision
+- More crates, fences, benches, lamps, cars and cover
+- ESC opens the Settings menu
+- Mouse sensitivity slider from 0.5 to 5.0
+- Resume button and X button close Settings
+- Clicking the game locks the mouse again
 
-Controls:
-W = forward
-S = backward
-A = left
-D = right
-Shift = sprint
-Mouse = look around
-ESC = unlock mouse
+CONTROLS:
+WASD = Move
+SHIFT = Sprint
+Mouse = Look
+ESC = Settings / close Settings
 
-IMPORTANT:
-Replace the old index.html, style.css, and game.js files in GitHub with these files.
-
-GitHub Pages:
-Settings > Pages > Deploy from branch > main > / (root).
+GITHUB PAGES:
+Replace index.html, style.css and game.js with these files.
+Commit the changes, then refresh the site with Ctrl+Shift+R.

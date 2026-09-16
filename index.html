@@ -9,14 +9,30 @@
 <body>
 <div id="hud">
   <div id="logo">CAN'T CATCH ME</div>
-  <div id="help">WASD Move • Mouse Look • Shift Sprint • ESC Unlock</div>
+  <div id="help">WASD Move • Mouse Look • Shift Sprint • ESC Settings</div>
 </div>
 <div id="crosshair">+</div>
 
 <div id="start-screen">
   <h1>CAN'T CATCH ME</h1>
-  <p>Stage 2 — Rebuilt movement</p>
+  <p>Stage 3 — Bigger Map + Buildings + Settings</p>
   <button id="start-button">PLAY</button>
+</div>
+
+<div id="settings">
+  <div id="settings-panel">
+    <button id="close-settings" aria-label="Close settings">×</button>
+    <h2>Settings</h2>
+
+    <label for="sensitivity">Mouse Sensitivity</label>
+    <div class="slider-row">
+      <input id="sensitivity" type="range" min="0.5" max="5" step="0.1" value="2.2">
+      <span id="sensitivity-value">2.2</span>
+    </div>
+
+    <p class="settings-tip">Move the slider to make the camera turn slower or faster.</p>
+    <button id="resume-button">RESUME</button>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
