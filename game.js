@@ -1749,7 +1749,11 @@ async function dbRefreshQueue(){
  const pr=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
  if(mr.error||pr.error)return;const m=mr.data,players=pr.data||[],n=players.length;
  queueCount.textContent=n+" / 12 PLAYERS";
- if(m.status==="waiting"){queueStatus.textContent="WAITING FOR PLAYERS";queueTimer.textContent="Minimum 2 players required";}
+ if(m.status==="waiting"){
+  queueStatus.textContent="WAITING FOR PLAYERS";
+  queueTimer.textContent="Minimum "+(m.min_players||2)+" players required";
+  if(n>=Number(m.min_players||2)) ensureQueueCountdownStarted(m,n);
+}
  if(m.status==="countdown"){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0)authClient.rpc("lock_match_if_ready",{requested_match:dbMatchId});}
  if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
  if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
@@ -1867,3 +1871,15 @@ document.getElementById("bomb-return-btn")?.addEventListener("click",async()=>{
  await dbLeaveQueue();
  await showMainMenu();
 });
+
+
+async function ensureQueueCountdownStarted(match, playerCount){
+  if(!match || match.status!=="waiting") return;
+  const min=Number(match.min_players||2);
+  if(playerCount < min) return;
+
+  // Atomically transition waiting -> countdown. RLS blocks direct update,
+  // so use the dedicated RPC installed by START-QUEUE-COUNTDOWN-FIX.sql.
+  const r=await authClient.rpc("start_queue_countdown_if_ready",{requested_match:dbMatchId});
+  if(r.error) console.warn("Countdown start RPC:",r.error);
+}
