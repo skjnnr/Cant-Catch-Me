@@ -660,6 +660,19 @@ function cleanUsername(v){
   return v.trim().replace(/[^a-zA-Z0-9_-]/g,"").slice(0,20);
 }
 
+
+function refreshLocalNameplate(){
+  if(!playerModel) return;
+  if(localLabel){
+    playerModel.remove(localLabel);
+    if(localLabel.material?.map) localLabel.material.map.dispose();
+    if(localLabel.material) localLabel.material.dispose();
+    localLabel=null;
+  }
+  localLabel=makeUsernameSprite(currentUsername,currentRole);
+  playerModel.add(localLabel);
+}
+
 async function loadCurrentPlayerRole(user){
   currentRole="player";
   if(!user?.id) return currentRole;
@@ -668,7 +681,14 @@ async function loadCurrentPlayerRole(user){
     .select("role")
     .eq("user_id",user.id)
     .maybeSingle();
-  if(!error && data?.role==="owner") currentRole="owner";
+
+  if(error){
+    console.error("Could not load player role:",error);
+  }else if(String(data?.role||"").toLowerCase()==="owner"){
+    currentRole="owner";
+  }
+
+  refreshLocalNameplate();
   return currentRole;
 }
 
