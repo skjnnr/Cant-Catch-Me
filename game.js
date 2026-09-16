@@ -565,6 +565,7 @@ if(startButton) {
   startButton.addEventListener("click",()=>{
     started=true;
     if(startScreen) startScreen.style.display="none";
+  const inGameLogout=document.getElementById("logout-button"); if(inGameLogout) inGameLogout.style.display="none";
     keys.clear();
     requestMouse();
   });
@@ -902,6 +903,23 @@ const loadingBar=document.getElementById("loading-bar");
 const loadingPercent=document.getElementById("loading-percent");
 const loadingMapName=document.getElementById("loading-map-name");
 
+
+
+function showMainMenu(){
+  started=false;
+  paused=false;
+  clearMovementKeys?.();
+  pressed?.clear?.();
+  document.exitPointerLock?.();
+  if(settings) settings.style.display="none";
+  if(startScreen) startScreen.style.display="none";
+  if(mapSelectScreen) mapSelectScreen.style.display="flex";
+  const inGameLogout=document.getElementById("logout-button");
+  if(inGameLogout) inGameLogout.style.display="none";
+  refreshMainMenuIdentity();
+  syncMenuOnlineCount();
+}
+document.getElementById("back-main-menu")?.addEventListener("click",showMainMenu);
 
 document.getElementById("menu-select")?.addEventListener("click",()=>{
   document.querySelector(".ccm-map-panel")?.scrollIntoView({behavior:"smooth",block:"center"});

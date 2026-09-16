@@ -1,0 +1,5 @@
+Menu navigation update:
+- In-game LOG OUT button hidden during gameplay.
+- LOG OUT remains available in the post-login main menu.
+- Settings/sensitivity menu now has BACK TO MAIN MENU.
+- Back to Main Menu stops gameplay, exits pointer lock, closes settings, and returns to map/main menu without logging out.
