@@ -1465,17 +1465,18 @@ function remoteModel(username="Player",role="player"){
 let multiplayerStarted=false;
 let ch=null;
 
-function startMultiplayer(){
- if(multiplayerStarted || !multiplayerLoggedIn) return;
+async function startMultiplayer(){
+ if(multiplayerStarted || !multiplayerLoggedIn) return true;
  if(!window.supabase?.createClient){
    if(mpStatus)mpStatus.textContent="Supabase failed to load";
-   return;
+   throw new Error("Supabase failed to load");
  }
  multiplayerStarted=true;
  if(mpStatus)mpStatus.textContent="Connecting...";
 
  const client=authClient;
  ch=client.channel(multiplayerChannelName(),{config:{broadcast:{self:false},presence:{key:myId}}});
+
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
@@ -1497,28 +1498,90 @@ function startMultiplayer(){
    }
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
  }).on("presence",{event:"sync"},()=>{
-   const state=ch.presenceState(),ids=new Set(Object.keys(state));
-   for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.m);remotes.delete(id)}
+   if(!ch)return;
+   const state=ch.presenceState();
+   const presenceRows=Object.values(state).flat();
+   const ids=new Set(presenceRows.map(v=>v.id).filter(Boolean));
+
+   for(const [id,r] of remotes){
+     if(!ids.has(id)){scene.remove(r.m);remotes.delete(id);}
+   }
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
    syncMenuOnlineCount();
- }).subscribe(async st=>{
-   if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-   if(st==="SUBSCRIBED"){
-     await ch.track({id:myId,userId:currentAuthUser?.id||null,username:currentUsername,role:currentRole,joined_at:Date.now()});
-     syncMenuOnlineCount();
-   }
+   window.refreshRoomLeaderboard?.();
  });
+
+ await new Promise((resolve,reject)=>{
+   let settled=false;
+   const timeout=setTimeout(()=>{
+     if(settled)return;
+     settled=true;
+     multiplayerStarted=false;
+     if(mpStatus)mpStatus.textContent="Connection error";
+     reject(new Error("Multiplayer connection timed out"));
+   },10000);
+
+   ch.subscribe(async st=>{
+     if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
+     if(st==="SUBSCRIBED"&&!settled){
+       try{
+         await ch.track({
+           id:myId,
+           userId:currentAuthUser?.id||null,
+           username:currentUsername,
+           role:currentRole,
+           joined_at:Date.now()
+         });
+         settled=true;
+         clearTimeout(timeout);
+         syncMenuOnlineCount();
+         resolve(true);
+       }catch(err){
+         settled=true;
+         clearTimeout(timeout);
+         multiplayerStarted=false;
+         reject(err);
+       }
+     }else if((st==="CHANNEL_ERROR"||st==="TIMED_OUT"||st==="CLOSED")&&!settled){
+       settled=true;
+       clearTimeout(timeout);
+       multiplayerStarted=false;
+       reject(new Error("Multiplayer channel "+st.toLowerCase()));
+     }
+   });
+ });
+
  let lastNet=0;
+ const channelForLoop=ch;
  function netLoop(t){
+   if(!multiplayerLoggedIn || ch!==channelForLoop) return;
    requestAnimationFrame(netLoop);
+
    if(!localLabel && typeof playerModel!=="undefined" && currentUsername){
      localLabel=makeNameSprite(currentUsername,currentRole);
      playerModel.add(localLabel);
    }
-   for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(multiplayerLoggedIn&&ch&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,userId:currentAuthUser?.id||null,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+
+   for(const r of remotes.values()){
+     r.m.position.lerp(r.t,.3);
+     let d=(r.yaw||0)-r.m.rotation.y;
+     d=Math.atan2(Math.sin(d),Math.cos(d));
+     r.m.rotation.y+=d*.3;
+   }
+
+   if(ch && typeof started!=="undefined" && started && t-lastNet>50){
+     lastNet=t;
+     ch.send({type:"broadcast",event:"state",payload:{
+       id:myId,
+       userId:currentAuthUser?.id||null,
+       username:currentUsername,
+       role:currentRole,
+       x:player.x,y:player.y,z:player.z,yaw:player.yaw
+     }});
+   }
  }
  requestAnimationFrame(netLoop);
+ return true;
 }
 // Multiplayer intentionally does NOT start here.
 // enterGame() starts it only after Supabase confirms an authenticated session.
@@ -1740,6 +1803,13 @@ async function dbJoinPublicQueue(){
  const r=await authClient.rpc("join_game_match",{requested_room_code:m.room_code,requested_username:currentUsername||"Player"});
  if(r.error)throw r.error;if(!r.data?.success)throw new Error(r.data?.error||"Join failed");
  dbMatchId=r.data.match_id;dbMatchCode=r.data.room_code;lobbyMode="public";lobbyCode=dbMatchCode;
+
+ // Connect to the actual room multiplayer channel as soon as the DB assigns
+ // this player a public room code.
+ multiplayerLoggedIn=true;
+ multiplayerStarted=false;
+ await startMultiplayer();
+
  await startQueuePresence();
  await startReliableHeartbeat();
  await authClient.rpc("repair_queue_state",{requested_match:dbMatchId});
@@ -1820,6 +1890,7 @@ async function dbRefreshQueue(){
 }
 async function dbLeaveQueue(){
  if(typeof stopQueuePresence==="function") await stopQueuePresence();
+ await stopCurrentLobbyChannel();
  if(typeof stopReliableHeartbeat==="function") stopReliableHeartbeat();
  stopMatchHeartbeat();
  if(typeof bombLoop!=="undefined"&&bombLoop){clearInterval(bombLoop);bombLoop=null;}
@@ -2140,10 +2211,10 @@ async function watchActiveMatch(){
     .eq("id",dbMatchId).single();
   if(error)return console.warn("Active watcher:",error);
   if(m.status==="active" && m.bomb_holder){
-    // Enter actual playable state. Movement/jump are gated by `started`.
+    // Enter actual playable state. Do NOT clear keys on every 500ms poll.
+    // That was interrupting held WASD keys and causing glitchy movement.
     started=true;
     settingsOpen=false;
-    keys.clear();
     if(settingsEl)settingsEl.style.display="none";
     if(typeof paused!=="undefined")paused=false;
 
@@ -2155,6 +2226,7 @@ async function watchActiveMatch(){
     if(startScreen)startScreen.style.display="none";
     if(activeRoundEntered!==Number(m.round_number)){
       activeRoundEntered=Number(m.round_number);
+      keys.clear();
       try{
         await beginBombGameplay();
         // Browsers require a user gesture for pointer lock, so movement works

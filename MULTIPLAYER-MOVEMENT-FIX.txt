@@ -1,0 +1,14 @@
+CAN'T CATCH ME - MULTIPLAYER + MOVEMENT FIX
+
+No new Supabase SQL is required.
+
+Fixed:
+1. WASD glitch: the active-match watcher was clearing held keys every 500 ms.
+   Keys are now cleared only once when a new round begins.
+2. Public DB queue now connects to the actual room multiplayer channel after
+   Supabase assigns the six-digit room code.
+3. startMultiplayer now waits for SUBSCRIBED + Presence tracking before
+   reporting the connection as ready.
+4. Multiplayer Presence player counting uses the tracked player IDs.
+5. Leaving the queue/main menu removes the actual multiplayer room channel.
+6. Old network animation loops stop when their room channel is replaced.
