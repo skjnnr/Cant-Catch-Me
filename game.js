@@ -1798,7 +1798,17 @@ async function dbRefreshQueue(){
   authClient.rpc("advance_queue_presence_at_zero",{requested_match:dbMatchId,connected_players:queuePresenceCount})
     .then(({error})=>{if(error)console.warn("Queue advance:",error);});
 }}
- if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
+ if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");startRoundStartWatchdog();document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(async()=>{
+  try{
+    const {data,error}=await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});
+    if(error) throw error;
+    console.log("Round start:",data);
+  }catch(e){
+    console.error("Round start failed:",e);
+    const msg=document.getElementById("round-loading-text");
+    if(msg)msg.textContent="Starting round...";
+  }
+},700);}
  if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
 }
 async function dbLeaveQueue(){
@@ -2093,4 +2103,21 @@ async function presenceQueueRefresh(){
 async function getLoggedInUserId(){
   const {data:{session}}=await authClient.auth.getSession();
   return session?.user?.id||null;
+}
+
+
+let roundStartWatchdog=null;
+function startRoundStartWatchdog(){
+  if(roundStartWatchdog)clearInterval(roundStartWatchdog);
+  roundStartWatchdog=setInterval(async()=>{
+    if(!dbMatchId)return;
+    const {data:m}=await authClient.from("game_matches")
+      .select("status").eq("id",dbMatchId).single();
+    if(m?.status==="loading"){
+      const {error}=await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});
+      if(error)console.warn("Round-start watchdog:",error);
+    }else if(m?.status==="active"||m?.status==="finished"){
+      clearInterval(roundStartWatchdog);roundStartWatchdog=null;
+    }
+  },1000);
 }

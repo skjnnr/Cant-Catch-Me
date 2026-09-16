@@ -1,0 +1,5 @@
+Fixes matches stuck on ROUND LOADING.
+Run ROUND-START-FIX.sql once.
+The game then calls start_bomb_round_safe and retries once per second while a room remains in loading.
+The RPC is idempotent, so multiple connected clients can safely call it.
+It selects one alive player, sets Round 1, sets the match active, and schedules 5 seconds head start + 30 seconds bomb time.
