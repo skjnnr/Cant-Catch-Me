@@ -2140,6 +2140,13 @@ async function watchActiveMatch(){
     .eq("id",dbMatchId).single();
   if(error)return console.warn("Active watcher:",error);
   if(m.status==="active" && m.bomb_holder){
+    // Enter actual playable state. Movement/jump are gated by `started`.
+    started=true;
+    settingsOpen=false;
+    keys.clear();
+    if(settingsEl)settingsEl.style.display="none";
+    if(typeof paused!=="undefined")paused=false;
+
     if(queueOverlay)queueOverlay.style.display="none";
     if(roundLoadingOverlay)roundLoadingOverlay.style.display="none";
     ["queue-overlay","round-loading-overlay","loading-screen"].forEach(id=>{
@@ -2148,7 +2155,17 @@ async function watchActiveMatch(){
     if(startScreen)startScreen.style.display="none";
     if(activeRoundEntered!==Number(m.round_number)){
       activeRoundEntered=Number(m.round_number);
-      try{await beginBombGameplay();}catch(e){console.error("Bomb gameplay start:",e);}
+      try{
+        await beginBombGameplay();
+        // Browsers require a user gesture for pointer lock, so movement works
+        // immediately and a canvas click restores mouse-look.
+        const clickHint=document.getElementById("game-control-hint")||document.createElement("div");
+        clickHint.id="game-control-hint";
+        clickHint.textContent="WASD TO MOVE • CLICK GAME FOR MOUSE LOOK";
+        clickHint.style.cssText="position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9000;color:white;background:rgba(0,0,0,.55);padding:9px 14px;border-radius:8px;font:700 13px Arial;pointer-events:none";
+        if(!clickHint.parentNode)document.body.appendChild(clickHint);
+        setTimeout(()=>clickHint.remove(),4500);
+      }catch(e){console.error("Bomb gameplay start:",e);}
     }
   }
 }

@@ -1,0 +1,6 @@
+Fixes the game world loading but player controls remaining disabled.
+When Supabase says the match is active, the client now explicitly sets started=true,
+closes settings, clears stuck keys, unpauses gameplay, and starts bomb gameplay.
+WASD works immediately. Click the game once to reacquire mouse-look because browsers
+require a user gesture for pointer lock.
+No new SQL required. Minimum remains 2 players.
