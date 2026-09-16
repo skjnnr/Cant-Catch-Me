@@ -1,0 +1,7 @@
+Private code fix:
+- Restored missing cleanLobbyCode(), makeLobbyCode(), and room-state functions.
+- Multiplayer was still hard-coded to cant-catch-me:public-1; it now uses the selected room.
+- CREATE PRIVATE CODE generates a code and joins that private room.
+- JOIN PRIVATE CODE joins the exact same private Realtime channel.
+- PUBLIC-1 / PUBLIC1 still routes to the public room.
+- Switching rooms removes old remote players and the old Realtime channel.

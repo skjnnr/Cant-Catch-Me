@@ -898,6 +898,32 @@ async function loadCurrentPlayerRole(user){
 }
 
 
+
+// ---------- PUBLIC / PRIVATE ROOM STATE ----------
+let lobbyMode="public";
+let lobbyCode="482731";
+
+function cleanLobbyCode(value){
+  const raw=String(value||"").toUpperCase().trim();
+  if(raw==="482731") return "482731";
+  return raw.replace(/[^A-Z0-9]/g,"").slice(0,6);
+}
+
+function makeLobbyCode(){
+  const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const nums=new Uint32Array(6);
+  crypto.getRandomValues(nums);
+  let code="";
+  for(const n of nums) code+=chars[n % chars.length];
+  return code;
+}
+
+function multiplayerChannelName(){
+  return lobbyMode==="private"
+    ? "cant-catch-me:private:"+lobbyCode
+    : "cant-catch-me:public-1";
+}
+
 const mapSelectScreen=document.getElementById("map-select-screen");
 const loadingScreen=document.getElementById("loading-screen");
 const loadingBar=document.getElementById("loading-bar");
@@ -986,11 +1012,16 @@ async function stopCurrentLobbyChannel(){
     try{await authClient.removeChannel(ch);}catch(_){}
     ch=null;
   }
+  for(const [id,r] of remotes){
+    scene.remove(r.m);
+  }
+  remotes.clear();
+  if(mpCount) mpCount.textContent="Players: 0";
   multiplayerStarted=false;
 }
 async function enterSelectedLobby(mode,code="PUBLIC"){
   lobbyMode=mode;
-  lobbyCode=mode==="private"?cleanLobbyCode(code):"PUBLIC-1";
+  lobbyCode=mode==="private"?cleanLobbyCode(code):"482731";
   if(mode==="private" && lobbyCode.length!==6) return false;
   await stopCurrentLobbyChannel();
   multiplayerLoggedIn=true;
@@ -1035,10 +1066,13 @@ document.getElementById("lobby-choice-back")?.addEventListener("click",()=>{
 document.getElementById("private-code-back")?.addEventListener("click",()=>{
   privateCodeScreen.style.display="none"; lobbyChoiceScreen.style.display="flex";
 });
-document.getElementById("create-private")?.addEventListener("click",()=>{
+document.getElementById("create-private")?.addEventListener("click",async()=>{
   const code=makeLobbyCode();
-  document.getElementById("private-code-input").value=code;
-  document.getElementById("private-code-message").textContent="Code created: "+code+" — press JOIN PRIVATE CODE to enter.";
+  const input=document.getElementById("private-code-input");
+  const msg=document.getElementById("private-code-message");
+  input.value=code;
+  msg.textContent="Creating private room "+code+"...";
+  await enterSelectedLobby("private",code);
 });
 document.getElementById("join-private")?.addEventListener("click",()=>{
   const input=document.getElementById("private-code-input");
@@ -1046,22 +1080,21 @@ document.getElementById("join-private")?.addEventListener("click",()=>{
   input.value=code;
 
   // Typing the public room code here joins the same public lobby.
-  if(code==="PUBLIC-1"){
-    document.getElementById("private-code-message").textContent="Joining public lobby PUBLIC-1...";
-    enterSelectedLobby("public","PUBLIC-1");
+  if(code==="482731"){
+    document.getElementById("private-code-message").textContent="Joining public lobby 482731...";
+    enterSelectedLobby("public","482731");
     return;
   }
 
   if(code.length!==6){
-    document.getElementById("private-code-message").textContent="Enter a 6-character private code or PUBLIC-1.";
+    document.getElementById("private-code-message").textContent="Enter a 6-character room code.";
     return;
   }
   enterSelectedLobby("private",code);
 });
 document.getElementById("private-code-input")?.addEventListener("input",e=>{
-  let raw=String(e.target.value||"").toUpperCase().replace(/[^A-Z0-9-]/g,"");
-  if(raw.startsWith("PUBLIC")) e.target.value=raw.slice(0,8);
-  else e.target.value=raw.replace(/-/g,"").slice(0,6);
+  const raw=String(e.target.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  e.target.value=raw.slice(0,6);
 });
 
 document.querySelectorAll(".map-card").forEach(card=>{
@@ -1307,7 +1340,7 @@ function startMultiplayer(){
  if(mpStatus)mpStatus.textContent="Connecting...";
 
  const client=authClient;
- ch=client.channel("cant-catch-me:public-1",{config:{broadcast:{self:false},presence:{key:myId}}});
+ ch=client.channel(multiplayerChannelName(),{config:{broadcast:{self:false},presence:{key:myId}}});
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
@@ -1348,7 +1381,7 @@ function startMultiplayer(){
      playerModel.add(localLabel);
    }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,userId:currentAuthUser?.id||null,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+   if(multiplayerLoggedIn&&ch&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,userId:currentAuthUser?.id||null,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
 }

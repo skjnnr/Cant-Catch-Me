@@ -1,0 +1,6 @@
+Public lobby code update:
+- Public lobby code is now 482731.
+- It is exactly 6 digits.
+- It displays in the top-left during public gameplay.
+- Typing 482731 into the code-entry screen joins the public lobby.
+- Other six-character codes remain private rooms.
