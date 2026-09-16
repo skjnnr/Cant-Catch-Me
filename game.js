@@ -257,18 +257,18 @@ function makeTileTexture(kind="wall"){
   const c=document.createElement("canvas"); c.width=c.height=512;
   const x=c.getContext("2d");
   const floor=kind==="floor";
-  x.fillStyle=floor?"#727b7e":"#68757a"; x.fillRect(0,0,512,512);
+  x.fillStyle=floor?"#303338":"#25282d"; x.fillRect(0,0,512,512);
   const bh=floor?42:58, bw=floor?105:112;
   for(let y=-bh;y<512+bh;y+=bh){
     const row=Math.floor(y/bh), off=(row%2)*(bw/2);
     for(let xx=-bw+off;xx<512+bw;xx+=bw){
       const v=(Math.random()*22-11)|0;
-      const base=floor?116:108;
+      const base=floor?54:45;
       x.fillStyle=`rgb(${base+v},${base+8+v},${base+10+v})`;
       x.fillRect(xx+3,y+3,bw-6,bh-6);
-      x.strokeStyle="rgba(35,43,47,.65)"; x.lineWidth=3;
+      x.strokeStyle="rgba(8,10,12,.85)"; x.lineWidth=3;
       x.strokeRect(xx+2,y+2,bw-4,bh-4);
-      x.strokeStyle="rgba(210,220,220,.18)"; x.lineWidth=2;
+      x.strokeStyle="rgba(150,145,135,.10)"; x.lineWidth=2;
       x.beginPath(); x.moveTo(xx+5,y+5); x.lineTo(xx+bw-6,y+5); x.stroke();
     }
   }
@@ -279,18 +279,18 @@ function makeTileTexture(kind="wall"){
 }
 function tiledMaterial(base,rx,ry){
   const tex=base.clone(); tex.needsUpdate=true; tex.repeat.set(rx,ry);
-  return new THREE.MeshStandardMaterial({map:tex,roughness:.92,color:0xd8dcdd});
+  return new THREE.MeshStandardMaterial({map:tex,roughness:.92,color:0x9a9690});
 }
 const castleWallBase=makeTileTexture("wall");
 const castleFloorBase=makeTileTexture("floor");
-const castleStone=new THREE.MeshStandardMaterial({map:castleWallBase,roughness:.94,color:0xd5dbdd});
+const castleStone=new THREE.MeshStandardMaterial({map:castleWallBase,roughness:.94,color:0x817d78});
 const castleDark=new THREE.MeshStandardMaterial({color:0x48545a,roughness:1});
 const castleWood=new THREE.MeshStandardMaterial({color:0x68472d,roughness:.95});
 const castleGrass=new THREE.MeshStandardMaterial({color:0x4e6842,roughness:1});
 const castleBannerRed=new THREE.MeshStandardMaterial({color:0x9b3f35,roughness:.9});
 const castleBannerBlue=new THREE.MeshStandardMaterial({color:0x285b94,roughness:.9});
 const lampMetal=new THREE.MeshStandardMaterial({color:0x22282d,roughness:.72,metalness:.25});
-const lampGlow=new THREE.MeshBasicMaterial({color:0xffc45b});
+const lampGlow=new THREE.MeshBasicMaterial({color:0xffb13b});
 
 function castleAddCollider(x,z,w,d,topY=0,jumpable=true){
   castleColliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,topY,jumpable});
@@ -301,7 +301,7 @@ function castleBox(x,y,z,w,h,d,mat=castleStone,solid=true,autoTile=false){
     const tex=castleWallBase.clone(); tex.needsUpdate=true;
     tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
     tex.repeat.set(Math.max(1,w/7),Math.max(1,h/4));
-    useMat=new THREE.MeshStandardMaterial({map:tex,roughness:.94,color:0xd6dcde});
+    useMat=new THREE.MeshStandardMaterial({map:tex,roughness:.94,color:0x817d78});
   }
   const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),useMat);
   m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
@@ -322,7 +322,7 @@ function castleLamp(x,z){
   const cap=new THREE.Mesh(new THREE.ConeGeometry(.9,.65,4),lampMetal);
   cap.position.set(x,5.15,z); cap.rotation.y=Math.PI/4;
   scene.add(cap); castleObjects.push(cap);
-  const light=new THREE.PointLight(0xffa83d,1.45,25,2);
+  const light=new THREE.PointLight(0xff8a24,3.2,38,1.55);
   light.position.set(x,4.5,z); scene.add(light); castleObjects.push(light);
 }
 function buildCastleMap(){
@@ -330,7 +330,7 @@ function buildCastleMap(){
   // Foundation and visible stone-brick courtyard floor.
   castleBox(0,-.55,0,170,1,170,castleDark,false);
   const ft=castleFloorBase.clone(); ft.needsUpdate=true; ft.wrapS=ft.wrapT=THREE.RepeatWrapping; ft.repeat.set(18,18);
-  const floorMat=new THREE.MeshStandardMaterial({map:ft,roughness:.96,color:0xd0d3d2});
+  const floorMat=new THREE.MeshStandardMaterial({map:ft,roughness:.96,color:0x77736e});
   castleBox(0,.015,0,158,.08,158,floorMat,false);
 
   // Outer walls: repeated brick scale prevents stretching.
@@ -373,8 +373,33 @@ function buildCastleMap(){
 }
 buildCastleMap();
 
+
+let castleNightAmbient=null;
+let castleNightMoon=null;
+function setCastleNight(on){
+  if(!castleNightAmbient){
+    castleNightAmbient=new THREE.HemisphereLight(0x23364d,0x08090c,.20);
+    castleNightMoon=new THREE.DirectionalLight(0x7894bd,.24);
+    castleNightMoon.position.set(-35,55,-20);
+    scene.add(castleNightAmbient,castleNightMoon);
+  }
+  castleNightAmbient.visible=on; castleNightMoon.visible=on;
+  if(on){
+    scene.background=new THREE.Color(0x07101d);
+    scene.fog=new THREE.Fog(0x07101d,55,205);
+  }else{
+    scene.background=new THREE.Color(0x8ec9ee);
+    scene.fog=new THREE.Fog(0x8ec9ee,55,220);
+  }
+  // Dim the original global daylight while in the castle so lamps do the lighting.
+  scene.children.forEach(o=>{
+    if(o.isHemisphereLight && o!==castleNightAmbient) o.intensity=on?.10:.55;
+    if(o.isDirectionalLight && o!==castleNightMoon) o.intensity=on?.12:.75;
+  });
+}
 function applyMap(name){
   selectedMap=name==="castle"?"castle":"original";
+  setCastleNight(selectedMap==="castle");
   originalMapObjects.forEach(o=>o.visible=selectedMap==="original");
   castleObjects.forEach(o=>o.visible=selectedMap==="castle");
   colliders.length=0;

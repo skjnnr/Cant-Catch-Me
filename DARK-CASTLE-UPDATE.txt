@@ -1,0 +1,7 @@
+Dark Castle update
+- Castle masonry and paving darkened
+- Castle uses a night sky and dark fog
+- Daylight is heavily reduced only on Castle
+- Lamp posts use stronger warm point lights with larger range
+- Original map returns to daytime
+- Map selector/loading/multiplayer/CREATOR/MOD retained
