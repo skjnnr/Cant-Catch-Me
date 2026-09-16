@@ -1,0 +1,6 @@
+Role screen sync fix:
+- Role changes are checked from Supabase every 5 seconds.
+- Local tag rebuilds immediately.
+- Presence is refreshed.
+- Current role is broadcast immediately.
+- Every other browser now detects role/name changes and rebuilds that player's tag.

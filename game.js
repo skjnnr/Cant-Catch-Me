@@ -664,6 +664,7 @@ function cleanUsername(v){
 
 let currentAuthUser=null;
 let roleCheckTimer=null;
+let localLabel=null;
 
 function rebuildLocalRoleLabel(){
   if(typeof playerModel==="undefined" || !playerModel) return;
@@ -686,6 +687,10 @@ async function refreshRoleFromSupabase(){
     // Immediately tell other clients instead of waiting for the next normal network update.
     if(ch){
       try{
+        await ch.track({
+          id:myId,userId:currentAuthUser.id,username:currentUsername,
+          role:currentRole,joined_at:Date.now()
+        });
         await ch.send({type:"broadcast",event:"state",payload:{
           id:myId,userId:currentAuthUser.id,username:currentUsername,role:currentRole,
           x:player.x,y:player.y,z:player.z,yaw:player.yaw
@@ -927,7 +932,22 @@ function startMultiplayer(){
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
-   if(!r){r={m:remoteModel(p.username||"Player",p.role||"player"),t:new THREE.Vector3()};remotes.set(p.id,r)}
+   const nextName=p.username||"Player";
+   const nextRole=(p.role==="owner"||p.role==="mod")?p.role:"player";
+   if(!r){
+     r={m:remoteModel(nextName,nextRole),t:new THREE.Vector3(),username:nextName,role:nextRole};
+     remotes.set(p.id,r);
+   }else if(r.username!==nextName || r.role!==nextRole){
+     const oldTag=r.m.children.find(o=>o.userData?.playerNameplate);
+     if(oldTag){
+       r.m.remove(oldTag);
+       oldTag.material?.map?.dispose?.();
+       oldTag.material?.dispose?.();
+     }
+     r.m.add(makeNameSprite(nextName,nextRole));
+     r.username=nextName;
+     r.role=nextRole;
+   }
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
  }).on("presence",{event:"sync"},()=>{
    const state=ch.presenceState(),ids=new Set(Object.keys(state));
@@ -935,10 +955,9 @@ function startMultiplayer(){
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
  }).subscribe(async st=>{
    if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-   if(st==="SUBSCRIBED")await ch.track({id:myId,username:currentUsername, role:currentRole,joined_at:Date.now()});
+   if(st==="SUBSCRIBED")await ch.track({id:myId,userId:currentAuthUser?.id||null,username:currentUsername,role:currentRole,joined_at:Date.now()});
  });
  let lastNet=0;
- let localLabel=null;
  function netLoop(t){
    requestAnimationFrame(netLoop);
    if(!localLabel && typeof playerModel!=="undefined" && currentUsername){
@@ -946,7 +965,7 @@ function startMultiplayer(){
      playerModel.add(localLabel);
    }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
-   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+   if(multiplayerLoggedIn&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,userId:currentAuthUser?.id||null,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
 }
