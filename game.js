@@ -672,8 +672,9 @@ async function loadCurrentPlayerRole(user){
 
   if(error){
     console.error("Could not load player role:",error);
-  }else if(String(data?.role||"").toLowerCase()==="owner"){
-    currentRole="owner";
+  }else{
+    const dbRole=String(data?.role||"player").toLowerCase();
+    currentRole=(dbRole==="owner" || dbRole==="mod") ? dbRole : "player";
   }
 
   return currentRole;
@@ -820,21 +821,27 @@ if(mpStatus) mpStatus.textContent="Login required";
 if(mpCount) mpCount.textContent="Players: 0";
 
 function makeNameSprite(name,role="player"){
- const isOwner=String(role||"").toLowerCase()==="owner";
+ const normalizedRole=String(role||"player").toLowerCase();
+ const isOwner=normalizedRole==="owner";
+ const isMod=normalizedRole==="mod";
+ const hasRoleTag=isOwner||isMod;
+
  const c=document.createElement("canvas");c.width=512;c.height=192;
  const x=c.getContext("2d");x.clearRect(0,0,c.width,c.height);
  x.textAlign="center";x.textBaseline="middle";x.lineJoin="round";
 
- if(isOwner){
+ if(hasRoleTag){
+   const tag=isOwner?"OWNER":"MOD";
    x.font="bold 46px Arial";
    x.lineWidth=10;x.strokeStyle="rgba(0,0,0,.9)";
-   x.strokeText("OWNER",256,48);
-   x.fillStyle="#ffd54a";x.fillText("OWNER",256,48);
+   x.strokeText(tag,256,48);
+   x.fillStyle=isOwner?"#ffd54a":"#55c8ff";
+   x.fillText(tag,256,48);
  }
 
  x.font="bold 44px Arial";
  x.lineWidth=9;x.strokeStyle="rgba(0,0,0,.85)";
- const y=isOwner?125:92;
+ const y=hasRoleTag?125:92;
  x.strokeText(String(name||"Player"),256,y);
  x.fillStyle="#ffffff";x.fillText(String(name||"Player"),256,y);
 

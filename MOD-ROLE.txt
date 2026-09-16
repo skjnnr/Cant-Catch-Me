@@ -1,0 +1,11 @@
+MOD ROLE UPDATE
+
+Supported roles:
+player = username only
+mod = MOD above username
+owner = OWNER above username
+
+Assign a moderator in Supabase:
+insert into public.player_roles (user_id, role)
+values ('REAL-USER-UUID', 'mod')
+on conflict (user_id) do update set role='mod';
