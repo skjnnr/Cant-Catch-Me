@@ -20,10 +20,99 @@ sun.position.set(50, 90, 40);
 sun.castShadow = true;
 scene.add(sun);
 
+// Procedural textures keep GitHub Pages simple: no external image files needed.
+function makeGrassTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const x = c.getContext("2d");
+
+  x.fillStyle = "#3f8f42";
+  x.fillRect(0,0,256,256);
+
+  // mottled soil/grass variation
+  for(let i=0;i<3500;i++) {
+    const g = 75 + Math.floor(Math.random()*65);
+    const r = 35 + Math.floor(Math.random()*35);
+    const b = 30 + Math.floor(Math.random()*30);
+    x.fillStyle = `rgba(${r},${g},${b},${0.10+Math.random()*0.20})`;
+    const px=Math.random()*256, py=Math.random()*256;
+    x.fillRect(px,py,1+Math.random()*2,1+Math.random()*4);
+  }
+
+  // tiny grass blades
+  x.lineWidth=1;
+  for(let i=0;i<650;i++) {
+    const px=Math.random()*256, py=Math.random()*256;
+    x.strokeStyle=Math.random()>.5?"rgba(35,105,40,.35)":"rgba(110,155,75,.25)";
+    x.beginPath();
+    x.moveTo(px,py);
+    x.lineTo(px+(Math.random()-0.5)*2,py-2-Math.random()*5);
+    x.stroke();
+  }
+
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(28,28);
+  t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+function makeRoadTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const x = c.getContext("2d");
+
+  x.fillStyle="#50565b";
+  x.fillRect(0,0,256,256);
+
+  // asphalt aggregate
+  for(let i=0;i<5000;i++) {
+    const v=55+Math.floor(Math.random()*65);
+    const a=.06+Math.random()*.20;
+    x.fillStyle=`rgba(${v},${v},${v},${a})`;
+    const size=Math.random()<.85?1:2;
+    x.fillRect(Math.random()*256,Math.random()*256,size,size);
+  }
+
+  // faint cracks
+  x.strokeStyle="rgba(30,32,34,.22)";
+  x.lineWidth=1;
+  for(let i=0;i<18;i++) {
+    let px=Math.random()*256, py=Math.random()*256;
+    x.beginPath(); x.moveTo(px,py);
+    for(let j=0;j<4;j++) {
+      px+=(Math.random()-.5)*22;
+      py+=8+Math.random()*16;
+      x.lineTo(px,py);
+    }
+    x.stroke();
+  }
+
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(20,20);
+  t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+const grassTexture = makeGrassTexture();
+const roadTexture = makeRoadTexture();
+
 const M = {
-  grass: new THREE.MeshStandardMaterial({color:0x54d968}),
-  road: new THREE.MeshStandardMaterial({color:0x667887}),
-  sidewalk: new THREE.MeshStandardMaterial({color:0xa1a5a7}),
+  grass: new THREE.MeshStandardMaterial({
+    map: grassTexture,
+    color:0xffffff,
+    roughness:1
+  }),
+  road: new THREE.MeshStandardMaterial({
+    map: roadTexture,
+    color:0xffffff,
+    roughness:.96,
+    metalness:0
+  }),
+  sidewalk: new THREE.MeshStandardMaterial({color:0xa1a5a7,roughness:.9}),
   wall: new THREE.MeshStandardMaterial({color:0x7f8d91}),
   dark: new THREE.MeshStandardMaterial({color:0x344143}),
   wood: new THREE.MeshStandardMaterial({color:0x936a37}),
@@ -64,6 +153,20 @@ box(-14,.05,0,3,.08,220,M.sidewalk);
 box(14,.05,0,3,.08,220,M.sidewalk);
 box(0,.05,-14,220,.08,3,M.sidewalk);
 box(0,.05,14,220,.08,3,M.sidewalk);
+
+
+// Road markings make the streets read more clearly as asphalt roads.
+const lineMat = new THREE.MeshStandardMaterial({
+  color:0xe8d46a,
+  roughness:.85
+});
+
+for(let z=-100; z<=100; z+=12) {
+  box(0,.065,z,0.18,.02,5.5,lineMat,false);
+}
+for(let x=-100; x<=100; x+=12) {
+  box(x,.07,0,5.5,.02,0.18,lineMat,false);
+}
 
 // Enterable buildings with door openings.
 function building(x,z,w,d,h=8) {
