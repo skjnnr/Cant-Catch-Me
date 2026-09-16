@@ -295,7 +295,11 @@ function collisionAt(x,z) {
     // Once the player's feet are at/above an object's top, its side collider
     // no longer blocks horizontal motion. This lets the player move across
     // the top instead of hitting an invisible wall.
-    if(c.jumpable && feet >= c.topY - 0.12) continue;
+    // Give a small ledge-clearance margin so the player can actually move
+    // over the box edge during a jump. Without this, the 2D side collider
+    // acts like an invisible full-height wall.
+    const projectedFeet = feet + Math.max(0, player.velocityY) * 0.045;
+    if(c.jumpable && projectedFeet >= c.topY - 0.42) continue;
 
     return true;
   }
@@ -376,7 +380,7 @@ const GROUND_EYE_Y = 1.7;
 // Gravity and jump speed are tuned so the player can get on top of the
 // 2-unit-high crate cubes used around the map.
 const GRAVITY = 20;
-const JUMP_SPEED = 8.6;
+const JUMP_SPEED = 9.4;
 
 // The player's feet are eye-height below camera Y.
 function playerFeetY() {
@@ -403,7 +407,7 @@ function platformTopAt(x, z, previousFeet, nextFeet) {
 
     // Land when the player's feet cross the object's top while falling.
     // The tolerance keeps fast frames from tunneling through thin tops.
-    if(previousFeet >= c.topY - 0.12 && nextFeet <= c.topY + 0.12) {
+    if(previousFeet >= c.topY - 0.28 && nextFeet <= c.topY + 0.20) {
       best = Math.max(best, c.topY);
     }
   }
@@ -432,7 +436,7 @@ function updateJump(dt) {
     const top = platformTopAt(player.x, player.z, previousFeet, nextFeet);
 
     // Land on ground or a cube top.
-    if(nextFeet <= top + 0.08 && previousFeet >= top - 0.15) {
+    if(nextFeet <= top + 0.18 && previousFeet >= top - 0.30) {
       player.y = GROUND_EYE_Y + top;
       player.velocityY = 0;
       player.onGround = true;
@@ -484,8 +488,10 @@ function animate(now) {
   const dt=Math.min((now-last)/1000,.05);
   last=now;
 
-  updateMovement(dt);
+  // Vertical physics first so horizontal collision sees the player's
+  // CURRENT jump height rather than the previous frame's height.
   updateJump(dt);
+  updateMovement(dt);
   updateCamera();
   renderer.render(scene,camera);
 }
