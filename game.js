@@ -661,18 +661,6 @@ function cleanUsername(v){
 }
 
 
-function refreshLocalNameplate(){
-  if(!playerModel) return;
-  if(localLabel){
-    playerModel.remove(localLabel);
-    if(localLabel.material?.map) localLabel.material.map.dispose();
-    if(localLabel.material) localLabel.material.dispose();
-    localLabel=null;
-  }
-  localLabel=makeUsernameSprite(currentUsername,currentRole);
-  playerModel.add(localLabel);
-}
-
 async function loadCurrentPlayerRole(user){
   currentRole="player";
   if(!user?.id) return currentRole;
@@ -810,6 +798,7 @@ async function logoutOfGame(){
   }
 
   currentUsername="Player";
+  currentRole="player";
   authScreen.style.display="flex";
   if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
   showLogin();
@@ -830,25 +819,41 @@ let multiplayerLoggedIn = false;
 if(mpStatus) mpStatus.textContent="Login required";
 if(mpCount) mpCount.textContent="Players: 0";
 
-function makeNameSprite(name){
- const c=document.createElement("canvas");c.width=512;c.height=128;
+function makeNameSprite(name,role="player"){
+ const isOwner=String(role||"").toLowerCase()==="owner";
+ const c=document.createElement("canvas");c.width=512;c.height=192;
  const x=c.getContext("2d");x.clearRect(0,0,c.width,c.height);
- x.font="bold 48px Arial";x.textAlign="center";x.textBaseline="middle";
- x.lineWidth=9;x.strokeStyle="rgba(0,0,0,.85)";x.strokeText(name,256,64);
- x.fillStyle="#ffffff";x.fillText(name,256,64);
+ x.textAlign="center";x.textBaseline="middle";x.lineJoin="round";
+
+ if(isOwner){
+   x.font="bold 46px Arial";
+   x.lineWidth=10;x.strokeStyle="rgba(0,0,0,.9)";
+   x.strokeText("OWNER",256,48);
+   x.fillStyle="#ffd54a";x.fillText("OWNER",256,48);
+ }
+
+ x.font="bold 44px Arial";
+ x.lineWidth=9;x.strokeStyle="rgba(0,0,0,.85)";
+ const y=isOwner?125:92;
+ x.strokeText(String(name||"Player"),256,y);
+ x.fillStyle="#ffffff";x.fillText(String(name||"Player"),256,y);
+
  const tex=new THREE.CanvasTexture(c);
  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
- const sp=new THREE.Sprite(mat);sp.scale.set(3.8,.95,1);sp.position.set(0,1.35,0);
+ const sp=new THREE.Sprite(mat);
+ sp.scale.set(4.3,1.6,1);
+ sp.position.set(0,1.55,0);
+ sp.userData.playerNameplate=true;
  return sp;
 }
-function remoteModel(username="Player"){
+function remoteModel(username="Player",role="player"){
  const g=new THREE.Group(),skin=new THREE.MeshStandardMaterial({color:0xf1c98a}),
  blue=new THREE.MeshStandardMaterial({color:0x609bd0}),black=new THREE.MeshBasicMaterial({color:0x050505});
  const b=new THREE.Mesh(new THREE.BoxGeometry(1,1.75,.72),blue);b.position.y=-.88;g.add(b);
  const head=new THREE.Mesh(new THREE.BoxGeometry(.92,.78,.76),skin);head.position.y=.32;g.add(head);
  function p(x,y,w,h,r=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,.035),black);m.position.set(x,y,-.398);m.rotation.z=r;g.add(m)}
  p(-.2,.42,.12,.16);p(.2,.42,.12,.16);p(0,.16,.3,.055);p(-.18,.205,.12,.055,-.38);p(.18,.205,.12,.055,.38);
- g.add(makeNameSprite(username));
+ g.add(makeNameSprite(username,role));
  scene.add(g);return g;
 }
 let multiplayerStarted=false;
@@ -868,7 +873,7 @@ function startMultiplayer(){
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
-   if(!r){r={m:remoteModel(p.username||"Player"),t:new THREE.Vector3()};remotes.set(p.id,r)}
+   if(!r){r={m:remoteModel(p.username||"Player",p.role||"player"),t:new THREE.Vector3()};remotes.set(p.id,r)}
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
  }).on("presence",{event:"sync"},()=>{
    const state=ch.presenceState(),ids=new Set(Object.keys(state));
@@ -883,7 +888,7 @@ function startMultiplayer(){
  function netLoop(t){
    requestAnimationFrame(netLoop);
    if(!localLabel && typeof playerModel!=="undefined" && currentUsername){
-     localLabel=makeNameSprite(currentUsername);
+     localLabel=makeNameSprite(currentUsername,currentRole);
      playerModel.add(localLabel);
    }
    for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}

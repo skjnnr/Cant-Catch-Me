@@ -1,0 +1,14 @@
+SUPABASE ACCOUNT SETUP
+
+To allow accounts without email verification:
+1. Open your Supabase project.
+2. Go to Authentication.
+3. Open the email/provider settings.
+4. Turn OFF the setting named Confirm email / email confirmation.
+5. Save.
+
+The game uses Supabase Auth email + password.
+Username is stored in the authenticated user's metadata.
+Never put a service_role or secret key in this browser project.
+
+For a production public game, add username uniqueness/moderation and stronger server-side game validation later.

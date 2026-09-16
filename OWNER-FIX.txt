@@ -1,0 +1,9 @@
+OWNER TAG FIX
+
+This build uses the role loaded from public.player_roles after Supabase login.
+
+If role = owner:
+OWNER
+Username
+
+The local and remote multiplayer nameplates now both use the role.
