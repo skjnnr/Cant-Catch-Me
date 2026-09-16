@@ -688,12 +688,16 @@ async function loadCurrentPlayerRole(user){
     currentRole="owner";
   }
 
-  refreshLocalNameplate();
   return currentRole;
 }
 
 async function enterGame(user){
-  await loadCurrentPlayerRole(user);
+  try{
+    await loadCurrentPlayerRole(user);
+  }catch(err){
+    console.error("Role lookup failed:",err);
+    currentRole="player";
+  }
   currentUsername=cleanUsername(user?.user_metadata?.username||"Player")||"Player";
   multiplayerLoggedIn=true;
   authScreen.style.display="none";
@@ -761,7 +765,12 @@ document.getElementById("login-btn").onclick=async()=>{
   msg("Logging in...");
   const {data,error}=await authClient.auth.signInWithPassword({email,password});
   if(error){msg(error.message);return;}
-  await enterGame(data.user);
+  try{
+    await enterGame(data.user);
+  }catch(err){
+    console.error("Enter game failed:",err);
+    msg("Login succeeded, but the game failed to start. Check the browser console.");
+  }
 };
 
 // Sessions are intentionally not restored on page reload.

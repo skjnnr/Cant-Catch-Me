@@ -1,0 +1,3 @@
+LOGIN + OWNER FIX
+The owner role lookup no longer tries to rebuild the 3D player label before the player model variables initialize.
+Login now continues into the game after role lookup, and the multiplayer nameplate uses the loaded role.
