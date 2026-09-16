@@ -249,6 +249,59 @@ const player = {
   onGround: true
 };
 
+
+// ---------- PLAYER MODEL + CAMERA MODE ----------
+let thirdPerson = false;
+
+// Simple rectangular character body.
+const playerModel = new THREE.Group();
+
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe0b46f });
+const faceMat = new THREE.MeshStandardMaterial({ color: 0xf1c98a });
+const blackMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+
+const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.75, 0.72), bodyMat);
+body.position.y = -0.88;
+body.castShadow = true;
+playerModel.add(body);
+
+// Head is rectangular too.
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.78, 0.76), faceMat);
+head.position.y = 0.32;
+head.castShadow = true;
+playerModel.add(head);
+
+// Face points toward local -Z, which is the player's forward direction.
+function faceBox(x,y,w,h) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,0.035), blackMat);
+  m.position.set(x,y,-0.398);
+  return m;
+}
+
+// Two black eyes.
+playerModel.add(faceBox(-0.20,0.42,0.12,0.16));
+playerModel.add(faceBox( 0.20,0.42,0.12,0.16));
+
+// Smile: three small rectangular black pieces form a simple curved smile.
+const smileMid = faceBox(0,0.16,0.30,0.055);
+playerModel.add(smileMid);
+const smileL = faceBox(-0.18,0.205,0.12,0.055);
+smileL.rotation.z = -0.38;
+playerModel.add(smileL);
+const smileR = faceBox(0.18,0.205,0.12,0.055);
+smileR.rotation.z = 0.38;
+playerModel.add(smileR);
+
+scene.add(playerModel);
+playerModel.visible = false;
+
+function updatePlayerModel() {
+  // player.y is eye/camera height. Put the model so its eyes are near that height.
+  playerModel.position.set(player.x, player.y - 0.47, player.z);
+  playerModel.rotation.y = player.yaw;
+  playerModel.visible = thirdPerson;
+}
+
 camera.position.set(player.x,player.y,player.z);
 
 // KEY FIX:
@@ -359,6 +412,11 @@ if(closeButton) closeButton.addEventListener("click",()=>setSettings(false));
 
 window.addEventListener("keydown",e=>{
   if(e.code==="Escape" && started) setSettings(!settingsOpen);
+
+  // H toggles first-person / third-person.
+  if(e.code==="KeyH" && started && !e.repeat) {
+    thirdPerson = !thirdPerson;
+  }
 });
 
 renderer.domElement.addEventListener("click",()=>{
@@ -477,9 +535,35 @@ function updateMovement(dt) {
 }
 
 function updateCamera() {
-  camera.position.set(player.x,player.y,player.z);
-  camera.rotation.y=player.yaw;
-  camera.rotation.x=player.pitch;
+  updatePlayerModel();
+
+  if(!thirdPerson) {
+    camera.position.set(player.x,player.y,player.z);
+    camera.rotation.y=player.yaw;
+    camera.rotation.x=player.pitch;
+    return;
+  }
+
+  // Third-person chase camera: behind and slightly above the player.
+  const distance = 5.2;
+  const height = 2.15;
+
+  const backX = Math.sin(player.yaw) * distance;
+  const backZ = Math.cos(player.yaw) * distance;
+
+  camera.position.set(
+    player.x + backX,
+    player.y + height,
+    player.z + backZ
+  );
+
+  // Aim toward the character's upper body.
+  const target = new THREE.Vector3(
+    player.x,
+    player.y - 0.35,
+    player.z
+  );
+  camera.lookAt(target);
 }
 
 let last=performance.now();
