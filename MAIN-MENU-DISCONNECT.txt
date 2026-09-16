@@ -1,0 +1,9 @@
+Main-menu disconnect update:
+- BACK TO MAIN MENU immediately stops multiplayer movement broadcasts.
+- Untracks the player from the current Supabase Presence room.
+- Removes the current public/private Realtime channel.
+- Leaves the public matchmaking directory.
+- Clears the old room code.
+- Removes remote player models locally.
+- The old room's player count can update after Presence sync.
+- Joining another lobby reconnects networking normally.

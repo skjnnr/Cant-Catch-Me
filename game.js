@@ -900,13 +900,14 @@ async function loadCurrentPlayerRole(user){
 
 
 // ---------- PUBLIC / PRIVATE ROOM STATE ----------
+const PUBLIC_ROOM_LIMIT=12;
+const MATCHMAKING_CHANNEL="cant-catch-me:public-directory";
 let lobbyMode="public";
-let lobbyCode="482731";
+let lobbyCode="";
+let matchmakingChannel=null;
 
 function cleanLobbyCode(value){
-  const raw=String(value||"").toUpperCase().trim();
-  if(raw==="482731") return "482731";
-  return raw.replace(/[^A-Z0-9]/g,"").slice(0,6);
+  return String(value||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6);
 }
 
 function makeLobbyCode(){
@@ -914,14 +915,86 @@ function makeLobbyCode(){
   const nums=new Uint32Array(6);
   crypto.getRandomValues(nums);
   let code="";
-  for(const n of nums) code+=chars[n % chars.length];
+  for(const n of nums) code+=chars[n%chars.length];
   return code;
+}
+
+function makePublicCode(){
+  const nums=new Uint32Array(1);
+  crypto.getRandomValues(nums);
+  return String(100000+(nums[0]%900000));
 }
 
 function multiplayerChannelName(){
   return lobbyMode==="private"
     ? "cant-catch-me:private:"+lobbyCode
-    : "cant-catch-me:public-1";
+    : "cant-catch-me:public:"+lobbyCode;
+}
+
+async function ensureMatchmakingChannel(){
+  if(matchmakingChannel) return matchmakingChannel;
+  matchmakingChannel=authClient.channel(MATCHMAKING_CHANNEL,{
+    config:{presence:{key:myId}}
+  });
+  await new Promise((resolve,reject)=>{
+    let settled=false;
+    const done=()=>{if(!settled){settled=true;resolve();}};
+    const timer=setTimeout(done,1200);
+    matchmakingChannel
+      .on("presence",{event:"sync"},()=>{clearTimeout(timer);done();})
+      .subscribe(async status=>{
+        if(status==="SUBSCRIBED"){
+          try{await matchmakingChannel.track({id:myId,room:null});}catch(_){}
+          setTimeout(done,150);
+        }else if(status==="CHANNEL_ERROR"&&!settled){
+          clearTimeout(timer); settled=true; reject(new Error("Public matchmaking failed"));
+        }
+      });
+  });
+  return matchmakingChannel;
+}
+
+function publicRoomCounts(){
+  const counts={};
+  if(!matchmakingChannel) return counts;
+  const state=matchmakingChannel.presenceState();
+  for(const entries of Object.values(state)){
+    for(const p of entries){
+      if(p.room) counts[p.room]=(counts[p.room]||0)+1;
+    }
+  }
+  return counts;
+}
+
+async function advertisePublicRoom(code){
+  await ensureMatchmakingChannel();
+  await matchmakingChannel.track({id:myId,room:code});
+}
+
+async function choosePublicRoom(){
+  await ensureMatchmakingChannel();
+  const counts=publicRoomCounts();
+  const available=Object.keys(counts)
+    .filter(code=>/^\d{6}$/.test(code)&&counts[code]<PUBLIC_ROOM_LIMIT)
+    .sort((a,b)=>a.localeCompare(b));
+  if(available.length) return available[0];
+
+  let code;
+  do{code=makePublicCode();}while(counts[code]);
+  return code;
+}
+
+async function isActivePublicCode(code){
+  await ensureMatchmakingChannel();
+  return Object.prototype.hasOwnProperty.call(publicRoomCounts(),code);
+}
+
+async function leavePublicDirectory(){
+  if(matchmakingChannel){
+    try{await matchmakingChannel.untrack();}catch(_){}
+    try{await authClient.removeChannel(matchmakingChannel);}catch(_){}
+    matchmakingChannel=null;
+  }
 }
 
 const mapSelectScreen=document.getElementById("map-select-screen");
@@ -934,7 +1007,13 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 async function showMainMenu(){
   roomCodeDisplay.style.display="none";
+
+  // Fully disconnect from whichever public/private room the player was in.
   await stopCurrentLobbyChannel();
+  await leavePublicDirectory();
+
+  lobbyCode="";
+  lobbyMode="public";
   started=false;
   settingsOpen=false;
   keys.clear();
@@ -1006,27 +1085,54 @@ const roomTypeLabel=document.getElementById("room-type-label");
 const roomCodeText=document.getElementById("room-code-text");
 
 async function stopCurrentLobbyChannel(){
+  // Stop sending movement immediately before removing Presence/channel.
   multiplayerStarted=false;
-  if(ch){
-    try{await ch.untrack();}catch(_){}
-    try{await authClient.removeChannel(ch);}catch(_){}
-    ch=null;
+  multiplayerLoggedIn=false;
+
+  const oldChannel=ch;
+  ch=null;
+
+  if(oldChannel){
+    try{await oldChannel.untrack();}catch(err){console.warn("Presence untrack:",err);}
+    try{await authClient.removeChannel(oldChannel);}catch(err){console.warn("Channel remove:",err);}
   }
+
+  // Remove everyone from the old room locally.
   for(const [id,r] of remotes){
-    scene.remove(r.m);
+    if(r && r.m) scene.remove(r.m);
   }
   remotes.clear();
+
   if(mpCount) mpCount.textContent="Players: 0";
-  multiplayerStarted=false;
 }
-async function enterSelectedLobby(mode,code="PUBLIC"){
-  lobbyMode=mode;
-  lobbyCode=mode==="private"?cleanLobbyCode(code):"482731";
-  if(mode==="private" && lobbyCode.length!==6) return false;
+
+async function enterSelectedLobby(mode,code=""){
+  const msg=document.getElementById("private-code-message");
   await stopCurrentLobbyChannel();
   multiplayerLoggedIn=true;
-  const msg=document.getElementById("private-code-message");
-  if(msg && mode==="private") msg.textContent="Connecting to "+lobbyCode+"...";
+
+  lobbyMode=mode;
+  if(mode==="public"){
+    try{
+      lobbyCode=cleanLobbyCode(code);
+      if(!/^\d{6}$/.test(lobbyCode)) lobbyCode=await choosePublicRoom();
+      await advertisePublicRoom(lobbyCode);
+    }catch(err){
+      console.error(err);
+      if(msg) msg.textContent="Could not join public matchmaking. Try again.";
+      return false;
+    }
+  }else{
+    lobbyCode=cleanLobbyCode(code);
+    if(lobbyCode.length!==6) return false;
+    // Private players should not be advertised as public-room occupants.
+    if(matchmakingChannel){
+      try{await matchmakingChannel.track({id:myId,room:null});}catch(_){}
+    }
+  }
+
+  multiplayerLoggedIn=true;
+  if(msg) msg.textContent="Connecting to room "+lobbyCode+"...";
   try{
     await startMultiplayer();
   }catch(err){
@@ -1034,6 +1140,7 @@ async function enterSelectedLobby(mode,code="PUBLIC"){
     if(msg) msg.textContent="Could not connect to that lobby. Try again.";
     return false;
   }
+
   roomTypeLabel.textContent=mode==="private"?"PRIVATE ROOM CODE":"PUBLIC ROOM CODE";
   roomCodeText.textContent=lobbyCode;
   roomCodeDisplay.style.display="block";
@@ -1041,11 +1148,15 @@ async function enterSelectedLobby(mode,code="PUBLIC"){
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
   loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
+
   let p=0; loadingBar.style.width="0%"; loadingPercent.textContent="0%";
   const timer=setInterval(()=>{
-    p=Math.min(100,p+10); loadingBar.style.width=p+"%"; loadingPercent.textContent=p+"%";
+    p=Math.min(100,p+10);
+    loadingBar.style.width=p+"%";
+    loadingPercent.textContent=p+"%";
     if(p>=100){
-      clearInterval(timer); applyMap(pendingMap);
+      clearInterval(timer);
+      applyMap(pendingMap);
       setTimeout(()=>{
         loadingScreen.style.display="none";
         roomCodeDisplay.style.display="block";
@@ -1055,7 +1166,14 @@ async function enterSelectedLobby(mode,code="PUBLIC"){
   },55);
   return true;
 }
-document.getElementById("join-public")?.addEventListener("click",()=>enterSelectedLobby("public"));
+
+document.getElementById("join-public")?.addEventListener("click",async()=>{
+  const btn=document.getElementById("join-public");
+  const old=btn?.textContent;
+  if(btn) btn.textContent="FINDING ROOM...";
+  await enterSelectedLobby("public","");
+  if(btn) btn.textContent=old||"JOIN PUBLIC";
+});
 document.getElementById("private-lobby-option")?.addEventListener("click",()=>{
   lobbyChoiceScreen.style.display="none"; privateCodeScreen.style.display="flex";
   document.getElementById("private-code-message").textContent="";
@@ -1074,23 +1192,29 @@ document.getElementById("create-private")?.addEventListener("click",async()=>{
   msg.textContent="Creating private room "+code+"...";
   await enterSelectedLobby("private",code);
 });
-document.getElementById("join-private")?.addEventListener("click",()=>{
+document.getElementById("join-private")?.addEventListener("click",async()=>{
   const input=document.getElementById("private-code-input");
+  const msg=document.getElementById("private-code-message");
   const code=cleanLobbyCode(input.value);
   input.value=code;
-
-  // Typing the public room code here joins the same public lobby.
-  if(code==="482731"){
-    document.getElementById("private-code-message").textContent="Joining public lobby 482731...";
-    enterSelectedLobby("public","482731");
-    return;
-  }
-
   if(code.length!==6){
-    document.getElementById("private-code-message").textContent="Enter a 6-character room code.";
+    msg.textContent="Enter a 6-character room code.";
     return;
   }
-  enterSelectedLobby("private",code);
+
+  msg.textContent="Checking room "+code+"...";
+  try{
+    if(/^\d{6}$/.test(code) && await isActivePublicCode(code)){
+      msg.textContent="Joining public room "+code+"...";
+      await enterSelectedLobby("public",code);
+    }else{
+      msg.textContent="Joining private room "+code+"...";
+      await enterSelectedLobby("private",code);
+    }
+  }catch(err){
+    console.error(err);
+    msg.textContent="Could not check that room. Try again.";
+  }
 });
 document.getElementById("private-code-input")?.addEventListener("input",e=>{
   const raw=String(e.target.value||"").toUpperCase().replace(/[^A-Z0-9]/g,"");

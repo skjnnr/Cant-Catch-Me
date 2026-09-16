@@ -1,0 +1,11 @@
+Automatic public rooms
+- Maximum target: 12 players per public room.
+- JOIN PUBLIC searches for an existing public room with fewer than 12 players.
+- If every room is full, a new six-digit public room code is generated automatically.
+- This repeats for as many public rooms as needed.
+- The current six-digit public room code is shown top-left.
+- Typing an active six-digit public code into the code box joins that public room.
+- Private six-character codes still create/join private rooms.
+- Overflow protection rematches players if simultaneous joins briefly push a room above 12.
+
+This uses Supabase Realtime Presence, so no extra SQL setup is required.
