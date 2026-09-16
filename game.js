@@ -883,11 +883,11 @@ function makeNameSprite(name,role="player"){
  x.textAlign="center";x.textBaseline="middle";x.lineJoin="round";
 
  if(hasRoleTag){
-   const tag=isOwner?"OWNER":"MOD";
+   const tag=isOwner?"CREATOR":"MOD";
    x.font="bold 46px Arial";
    x.lineWidth=10;x.strokeStyle="rgba(0,0,0,.9)";
    x.strokeText(tag,256,48);
-   x.fillStyle=isOwner?"#ffd54a":"#55c8ff";
+   x.fillStyle=isOwner?"#2f80ff":"#55c8ff";
    x.fillText(tag,256,48);
  }
 
