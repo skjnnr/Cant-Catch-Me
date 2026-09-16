@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="mp" style="position:fixed;right:14px;top:14px;z-index:50;background:#000a;color:white;padding:10px;border-radius:8px;font-family:Arial;pointer-events:none"><b>MULTIPLAYER</b><div id="mp-status">Connecting...</div><div id="mp-count">Players: 1</div></div>
 <div id="hud">
   <div id="logo">CAN'T CATCH ME</div>
   <div id="help">WASD Move • Space Jump • Shift Sprint • H Third Person • ESC Settings</div>
@@ -36,6 +37,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="game.js"></script>
 </body>
 </html>

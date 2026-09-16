@@ -1,0 +1,1 @@
+Upload all files to GitHub Pages. Open the game on two devices/windows, click PLAY on both, and the top-right panel should show Online / Players: 2. Movement is sent with Supabase Realtime Broadcast and membership uses Presence.

@@ -586,3 +586,45 @@ window.addEventListener("resize",()=>{
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
 });
+
+// ---- SUPABASE MULTIPLAYER V1 ----
+const SB_URL="https://wsucaukqrommcshdpdxy.supabase.co";
+const SB_KEY="sb_publishable_eksR6ebuyO98BaYm5pVTdg__4exI5Xc";
+const myId=crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2);
+const remotes=new Map();
+const mpStatus=document.getElementById("mp-status"),mpCount=document.getElementById("mp-count");
+
+function remoteModel(){
+ const g=new THREE.Group(),skin=new THREE.MeshStandardMaterial({color:0xf1c98a}),
+ blue=new THREE.MeshStandardMaterial({color:0x609bd0}),black=new THREE.MeshBasicMaterial({color:0x050505});
+ const b=new THREE.Mesh(new THREE.BoxGeometry(1,1.75,.72),blue);b.position.y=-.88;g.add(b);
+ const head=new THREE.Mesh(new THREE.BoxGeometry(.92,.78,.76),skin);head.position.y=.32;g.add(head);
+ function p(x,y,w,h,r=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,.035),black);m.position.set(x,y,-.398);m.rotation.z=r;g.add(m)}
+ p(-.2,.42,.12,.16);p(.2,.42,.12,.16);p(0,.16,.3,.055);p(-.18,.205,.12,.055,-.38);p(.18,.205,.12,.055,.38);
+ scene.add(g);return g;
+}
+if(window.supabase?.createClient){
+ const client=window.supabase.createClient(SB_URL,SB_KEY);
+ const ch=client.channel("cant-catch-me:public-1",{config:{broadcast:{self:false},presence:{key:myId}}});
+ ch.on("broadcast",{event:"state"},({payload:p})=>{
+   if(!p||p.id===myId)return;
+   let r=remotes.get(p.id);
+   if(!r){r={m:remoteModel(),t:new THREE.Vector3()};remotes.set(p.id,r)}
+   r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
+ }).on("presence",{event:"sync"},()=>{
+   const state=ch.presenceState(),ids=new Set(Object.keys(state));
+   for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.m);remotes.delete(id)}
+   if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
+ }).subscribe(async st=>{
+   if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
+   if(st==="SUBSCRIBED")await ch.track({id:myId,joined_at:Date.now()});
+ });
+ let lastNet=0;
+ function netLoop(t){
+   requestAnimationFrame(netLoop);
+   for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
+   if(typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
+ }
+ requestAnimationFrame(netLoop);
+}else if(mpStatus)mpStatus.textContent="Supabase failed to load";
+// ---- END MULTIPLAYER ----
