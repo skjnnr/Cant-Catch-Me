@@ -1,0 +1,1 @@
+No new SQL required. Adds an independent Supabase active-state watcher that force-closes Round Loading and enters bomb gameplay once per round.

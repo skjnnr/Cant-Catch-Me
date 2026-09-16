@@ -2130,3 +2130,27 @@ function startRoundStartWatchdog(){
     }
   },1000);
 }
+
+// ===== AUTHORITATIVE ACTIVE MATCH WATCHER =====
+let activeMatchWatcher=null, activeRoundEntered=-1;
+async function watchActiveMatch(){
+  if(!dbMatchId)return;
+  const {data:m,error}=await authClient.from("game_matches")
+    .select("status,round_number,bomb_holder,bomb_explodes_at")
+    .eq("id",dbMatchId).single();
+  if(error)return console.warn("Active watcher:",error);
+  if(m.status==="active" && m.bomb_holder){
+    if(queueOverlay)queueOverlay.style.display="none";
+    if(roundLoadingOverlay)roundLoadingOverlay.style.display="none";
+    ["queue-overlay","round-loading-overlay","loading-screen"].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.style.display="none";
+    });
+    if(startScreen)startScreen.style.display="none";
+    if(activeRoundEntered!==Number(m.round_number)){
+      activeRoundEntered=Number(m.round_number);
+      try{await beginBombGameplay();}catch(e){console.error("Bomb gameplay start:",e);}
+    }
+  }
+}
+activeMatchWatcher=setInterval(watchActiveMatch,500);
+watchActiveMatch();
