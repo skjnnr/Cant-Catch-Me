@@ -209,3 +209,9 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
 #queue-overlay,#round-loading-overlay{display:none;position:fixed;inset:0;z-index:200000;background:rgba(5,9,18,.9);align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif}
 .queue-card,.round-card{width:min(520px,88vw);text-align:center;padding:34px 30px;border-radius:16px;background:rgba(13,28,62,.97);border:2px solid rgba(255,255,255,.75)}
 .queue-logo{font-size:26px;font-weight:900;margin-bottom:28px}#queue-status,#round-loading-title{font-size:30px;font-weight:900}#queue-count{font-size:22px;font-weight:800;margin-top:18px}#queue-timer{font-size:20px;margin-top:12px}.queue-note{opacity:.75;margin-top:10px}#queue-leave-btn{margin-top:26px;padding:12px 22px;font-weight:800}
+
+#bomb-hud{display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:250000;text-align:center;color:#fff;font-family:Arial,sans-serif;text-shadow:0 2px 5px #000}
+#bomb-owner-text{font-size:18px;font-weight:900}#bomb-time-text{font-size:42px;font-weight:1000}
+#bomb-result-screen{display:none;position:fixed;inset:0;z-index:300000;background:rgba(4,7,15,.94);align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif}
+.bomb-result-card{width:min(540px,88vw);padding:42px 30px;text-align:center;border:2px solid #fff;border-radius:16px;background:#10254e}
+#bomb-result-title{font-size:34px;font-weight:1000}.bomb-result-card button{margin-top:28px;padding:13px 24px;font-weight:900}

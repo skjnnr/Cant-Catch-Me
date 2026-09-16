@@ -1169,7 +1169,8 @@ async function enterSelectedLobby(mode,code=""){
   window.forceRoomLeaderboard?.(true);
         roomLeaderboard?.classList.add("in-room");
         window.refreshRoomLeaderboard?.();
-        if(startScreen) startScreen.style.display="flex";
+        if(startScreen) startScreen.style.display="none";
+      if(typeof beginBombGameplay==="function") beginBombGameplay();
       },180);
     }
   },55);
@@ -1251,7 +1252,8 @@ document.getElementById("map-confirm")?.addEventListener("click",()=>{
       applyMap(pendingMap);
       setTimeout(()=>{
         loadingScreen.style.display="none";
-        if(startScreen) startScreen.style.display="flex";
+        if(startScreen) startScreen.style.display="none";
+      if(typeof beginBombGameplay==="function") beginBombGameplay();
       },180);
     }
   },55);
@@ -1707,7 +1709,7 @@ function ensureQueueUI(){
   if(!q){
     q=document.createElement("div");
     q.id="queue-overlay";
-    q.innerHTML=`<div class="queue-card"><div class="queue-logo">CAN'T CATCH ME</div><div id="queue-status">WAITING FOR PLAYERS</div><div id="queue-count">0 / 12 PLAYERS</div><div id="queue-timer">Minimum 6 players required</div><div class="queue-note">Players can join until the countdown reaches 0.</div><button id="queue-leave-btn">BACK TO MAIN MENU</button></div>`;
+    q.innerHTML=`<div class="queue-card"><div class="queue-logo">CAN'T CATCH ME</div><div id="queue-status">WAITING FOR PLAYERS</div><div id="queue-count">0 / 12 PLAYERS</div><div id="queue-timer">Minimum 2 players required</div><div class="queue-note">Players can join until the countdown reaches 0.</div><button id="queue-leave-btn">BACK TO MAIN MENU</button></div>`;
     document.body.appendChild(q);
   }
   let r=document.getElementById("round-loading-overlay");
@@ -1747,15 +1749,121 @@ async function dbRefreshQueue(){
  const pr=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
  if(mr.error||pr.error)return;const m=mr.data,players=pr.data||[],n=players.length;
  queueCount.textContent=n+" / 12 PLAYERS";
- if(m.status==="waiting"){queueStatus.textContent="WAITING FOR PLAYERS";queueTimer.textContent="Minimum 6 players required";}
+ if(m.status==="waiting"){queueStatus.textContent="WAITING FOR PLAYERS";queueTimer.textContent="Minimum 2 players required";}
  if(m.status==="countdown"){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0)authClient.rpc("lock_match_if_ready",{requested_match:dbMatchId});}
  if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(()=>authClient.rpc("start_bomb_round",{requested_match:dbMatchId}),1000);}
  if(m.status==="active"){queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");document.getElementById("round-loading-text").textContent="Bomb holder selected. Get ready!";setTimeout(()=>{roundLoadingOverlay && (roundLoadingOverlay.style.display="none");roomCodeDisplay.style.display="block";window.forceRoomLeaderboard?.(true);if(startScreen)startScreen.style.display="flex";},1600);if(queuePoll){clearInterval(queuePoll);queuePoll=null;}}
 }
-async function dbLeaveQueue(){if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="none");}
+async function dbLeaveQueue(){
+ if(typeof bombLoop!=="undefined"&&bombLoop){clearInterval(bombLoop);bombLoop=null;}
+ if(typeof bombHud!=="undefined"&&bombHud)bombHud.style.display="none";
+ if(typeof bombResultScreen!=="undefined"&&bombResultScreen)bombResultScreen.style.display="none";if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="none");}
 document.getElementById("queue-leave-btn")?.addEventListener("click",async()=>{await dbLeaveQueue();await showMainMenu();});
 
 (function(){
  const old=document.getElementById("join-public");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
  btn.addEventListener("click",async()=>{const t=btn.textContent;btn.disabled=true;btn.textContent="JOINING QUEUE...";try{lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none");await stopCurrentLobbyChannel();multiplayerLoggedIn=true;await dbJoinPublicQueue();}catch(e){console.error(e);lobbyChoiceScreen && (lobbyChoiceScreen.style.display="flex");alert("Could not join public queue: "+(e.message||e));}finally{btn.disabled=false;btn.textContent=t;}});
 })();
+
+
+// ===== BOMB / TAG / ELIMINATION GAMEPLAY V1 =====
+const bombHud=document.getElementById("bomb-hud"),bombOwnerText=document.getElementById("bomb-owner-text"),
+bombTimeText=document.getElementById("bomb-time-text"),bombResultScreen=document.getElementById("bomb-result-screen"),
+bombResultTitle=document.getElementById("bomb-result-title"),bombResultSub=document.getElementById("bomb-result-sub");
+let bombLoop=null,bombDetonationRequested=false,lastBombHolder=null,headStartUntil=0,roundSeen=0;
+
+async function fetchMatchState(){
+ if(!dbMatchId)return null;
+ const r=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
+ return r.error?null:r.data;
+}
+async function fetchMatchPlayers(){
+ if(!dbMatchId)return [];
+ const r=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
+ return r.data||[];
+}
+async function beginBombGameplay(){
+ if(bombLoop)clearInterval(bombLoop);
+ bombDetonationRequested=false;
+ bombHud.style.display="block";
+ bombLoop=setInterval(syncBombGameplay,100);
+ await syncBombGameplay();
+}
+async function syncBombGameplay(){
+ const m=await fetchMatchState();if(!m)return;
+ const players=await fetchMatchPlayers();
+ const holder=players.find(p=>p.user_id===m.bomb_holder);
+ bombOwnerText.textContent="BOMB: "+(holder?.username||"Selecting...");
+
+ if(m.round_number!==roundSeen){
+   roundSeen=m.round_number;
+   lastBombHolder=m.bomb_holder;
+   // start_bomb_round SQL schedules explosion 35 seconds away:
+   // first 5 seconds are the runners' head start.
+   headStartUntil=Date.now()+5000;
+   roundLoadingOverlay.style.display="flex";
+   const meHas=m.bomb_holder===currentUser?.id || m.bomb_holder===myId;
+   document.getElementById("round-loading-title").textContent="ROUND "+m.round_number;
+   document.getElementById("round-loading-text").textContent=meHas
+      ?"YOU START WITH THE BOMB — WAIT 5 SECONDS!"
+      :((holder?.username||"A PLAYER")+" STARTS WITH THE BOMB — RUN!");
+   setTimeout(()=>roundLoadingOverlay.style.display="none",1800);
+ }
+
+ if(m.status==="active"&&m.bomb_explodes_at){
+   const left=Math.max(0,(new Date(m.bomb_explodes_at).getTime()-Date.now())/1000);
+   bombTimeText.textContent=left.toFixed(1);
+   if(left<=0.05&&!bombDetonationRequested){
+     bombDetonationRequested=true;
+     const r=await authClient.rpc("detonate_bomb",{requested_match:dbMatchId});
+     setTimeout(()=>{bombDetonationRequested=false;syncBombGameplay();},400);
+   }
+   // Attempt tag only if this client is the authoritative current holder.
+   const myUid=currentUser?.id;
+   if(myUid&&m.bomb_holder===myUid&&Date.now()>=headStartUntil) attemptBombTag(players);
+ } else if(m.status==="between_rounds"){
+   bombHud.style.display="none";
+   const me=players.find(p=>p.user_id===currentUser?.id);
+   if(me?.eliminated){showBombResult(false);}
+   else if(!queueStarting){
+     queueStarting=true;
+     roundLoadingOverlay.style.display="flex";
+     document.getElementById("round-loading-title").textContent="NEXT ROUND";
+     document.getElementById("round-loading-text").textContent="Selecting a new bomb holder...";
+     setTimeout(async()=>{await authClient.rpc("start_bomb_round",{requested_match:dbMatchId});queueStarting=false;},1800);
+   }
+ } else if(m.status==="finished"){
+   bombHud.style.display="none";
+   showBombResult(m.winner_id===currentUser?.id);
+ }
+}
+
+let tagCooldownUntil=0;
+async function attemptBombTag(players){
+ if(Date.now()<tagCooldownUntil)return;
+ // Remote models already contain the networked positions. Tag radius ~1.65m.
+ for(const [id,r] of remotes){
+   const target=players.find(p=>p.user_id===id || p.username===r.username);
+   if(!target||target.eliminated||target.user_id===currentUser?.id||!r.m)continue;
+   const dx=player.x-r.m.position.x,dz=player.z-r.m.position.z;
+   if(Math.hypot(dx,dz)<=1.65){
+     tagCooldownUntil=Date.now()+1200;
+     const res=await authClient.rpc("tag_player",{requested_match:dbMatchId,tagged_player:target.user_id});
+     if(res.error)console.warn("Tag rejected",res.error);
+     return;
+   }
+ }
+}
+
+function showBombResult(won){
+ if(bombLoop){clearInterval(bombLoop);bombLoop=null;}
+ bombResultScreen.style.display="flex";
+ bombResultTitle.textContent=won?"YOU WON!":"YOU HAVE BEEN BLOWN UP!";
+ bombResultSub.textContent=won?"You are the last player remaining.":"You were eliminated from this match.";
+}
+document.getElementById("bomb-return-btn")?.addEventListener("click",async()=>{
+ bombResultScreen.style.display="none";
+ bombHud.style.display="none";
+ await dbLeaveQueue();
+ await showMainMenu();
+});

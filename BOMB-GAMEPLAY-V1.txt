@@ -1,0 +1,10 @@
+Bomb gameplay V1:
+- Round loading identifies the starting bomb holder.
+- 5-second head-start presentation.
+- Synced bomb holder/timer from Supabase game_matches.
+- Holder proximity-tags another alive player; tag_player RPC transfers bomb and adds 3 seconds (DB capped).
+- Bomb detonation uses detonate_bomb RPC.
+- Eliminated player sees YOU HAVE BEEN BLOWN UP + Return to Lobby.
+- Survivors automatically advance to another round with a newly selected bomb holder.
+- Last survivor sees YOU WON! + Return to Lobby.
+- Uses the Supabase backend already installed.
