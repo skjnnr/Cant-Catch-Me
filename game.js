@@ -248,14 +248,44 @@ box(109,3,0,1,6,218,M.dark,false); addCollider(109,0,1,218,6,false);
 // ---------- MAP SYSTEM ----------
 const originalMapObjects = scene.children.filter(o=>!preMapChildren.has(o));
 const originalColliders = colliders.map(c=>({...c}));
-const castleObjects = [];
-let castleColliders = [];
+const templeObjects = [];
+let templeColliders = [];
 let selectedMap = "original";
 let pendingMap = "original";
 
 function makeTileTexture(kind="wall"){
   const c=document.createElement("canvas"); c.width=c.height=512;
   const x=c.getContext("2d");
+  if(kind==="sand" || kind==="sandfloor"){
+    const floor=kind==="sandfloor";
+    x.fillStyle=floor?"#cdb187":"#c7a878"; x.fillRect(0,0,512,512);
+    const bh=floor?64:54, bw=floor?64:118;
+    for(let y=-bh;y<512+bh;y+=bh){
+      const row=Math.floor(y/bh), off=floor?0:(row%2)*(bw/2);
+      for(let xx=-bw+off;xx<512+bw;xx+=bw){
+        const v=(Math.random()*20-10)|0;
+        const base=floor?196:182;
+        x.fillStyle=`rgb(${base+v},${base-14+v},${base-46+v})`;
+        x.fillRect(xx+2,y+2,bw-4,bh-4);
+        x.strokeStyle="rgba(70,52,30,.35)"; x.lineWidth=2;
+        x.strokeRect(xx+1,y+1,bw-2,bh-2);
+        if(!floor){
+          x.strokeStyle="rgba(255,240,210,.10)"; x.lineWidth=1;
+          x.beginPath(); x.moveTo(xx+3,y+3); x.lineTo(xx+bw-4,y+3); x.stroke();
+        }
+      }
+    }
+    // A few darker weathering blotches so it doesn't look too uniform.
+    for(let i=0;i<26;i++){
+      x.fillStyle=`rgba(90,68,40,${(Math.random()*.12).toFixed(2)})`;
+      const rx=Math.random()*512, ry=Math.random()*512, rr=18+Math.random()*46;
+      x.beginPath(); x.ellipse(rx,ry,rr,rr*.6,Math.random()*Math.PI,0,Math.PI*2); x.fill();
+    }
+    const t=new THREE.CanvasTexture(c);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    t.magFilter=THREE.NearestFilter;
+    return t;
+  }
   const floor=kind==="floor";
   x.fillStyle=floor?"#303338":"#25282d"; x.fillRect(0,0,512,512);
   const bh=floor?42:58, bw=floor?105:112;
@@ -281,131 +311,181 @@ function tiledMaterial(base,rx,ry){
   const tex=base.clone(); tex.needsUpdate=true; tex.repeat.set(rx,ry);
   return new THREE.MeshStandardMaterial({map:tex,roughness:.92,color:0x9a9690});
 }
-const castleWallBase=makeTileTexture("wall");
-const castleFloorBase=makeTileTexture("floor");
-const castleStone=new THREE.MeshStandardMaterial({map:castleWallBase,roughness:.94,color:0x817d78});
-const castleDark=new THREE.MeshStandardMaterial({color:0x48545a,roughness:1});
-const castleWood=new THREE.MeshStandardMaterial({color:0x68472d,roughness:.95});
-const castleGrass=new THREE.MeshStandardMaterial({color:0x4e6842,roughness:1});
-const castleBannerRed=new THREE.MeshStandardMaterial({color:0x9b3f35,roughness:.9});
-const castleBannerBlue=new THREE.MeshStandardMaterial({color:0x285b94,roughness:.9});
+const templeWallBase=makeTileTexture("sand");
+const templeFloorBase=makeTileTexture("sandfloor");
+const templeStone=new THREE.MeshStandardMaterial({map:templeWallBase,roughness:.96,color:0xd8c19a});
+const templeDark=new THREE.MeshStandardMaterial({color:0x8a6f4e,roughness:1});
+const templeWood=new THREE.MeshStandardMaterial({color:0x6b4d2c,roughness:.95});
+const templePoolMat=new THREE.MeshStandardMaterial({color:0x36d94a,emissive:0x1c8f2c,emissiveIntensity:.9,roughness:.35,transparent:true,opacity:.88});
 const lampMetal=new THREE.MeshStandardMaterial({color:0x22282d,roughness:.72,metalness:.25});
 const lampGlow=new THREE.MeshBasicMaterial({color:0xffb13b});
 
-function castleAddCollider(x,z,w,d,topY=0,jumpable=true){
-  castleColliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,topY,jumpable});
+function templeAddCollider(x,z,w,d,topY=0,jumpable=true){
+  templeColliders.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,topY,jumpable});
 }
-function castleBox(x,y,z,w,h,d,mat=castleStone,solid=true,autoTile=false){
+function templeBox(x,y,z,w,h,d,mat=templeStone,solid=true,autoTile=false){
   let useMat=mat;
-  if(autoTile && mat===castleStone){
-    const tex=castleWallBase.clone(); tex.needsUpdate=true;
+  if(autoTile && mat===templeStone){
+    const tex=templeWallBase.clone(); tex.needsUpdate=true;
     tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
     tex.repeat.set(Math.max(1,w/7),Math.max(1,h/4));
-    useMat=new THREE.MeshStandardMaterial({map:tex,roughness:.94,color:0x817d78});
+    useMat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,color:0xd8c19a});
   }
   const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),useMat);
   m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
-  scene.add(m); castleObjects.push(m);
-  if(solid) castleAddCollider(x,z,w,d,y+h/2,true);
+  scene.add(m); templeObjects.push(m);
+  if(solid) templeAddCollider(x,z,w,d,y+h/2,true);
   return m;
 }
-function castleTower(x,z,w=15,h=13){
-  castleBox(x,h/2,z,w,h,w,castleStone,true,true);
+function templeTower(x,z,w=15,h=13){
+  templeBox(x,h/2,z,w,h,w,templeStone,true,true);
   for(const [dx,dz] of [[-w/2+1.7,-w/2+1.7],[w/2-1.7,-w/2+1.7],[-w/2+1.7,w/2-1.7],[w/2-1.7,w/2-1.7]])
-    castleBox(x+dx,h+1.25,z+dz,3.4,2.5,3.4,castleStone,true,true);
+    templeBox(x+dx,h+1.25,z+dz,3.4,2.5,3.4,templeStone,true,true);
 }
-function castleLamp(x,z){
-  castleBox(x,.45,z,3.2,.9,3.2,castleStone,true,true);
-  castleBox(x,2.7,z,.38,4.5,.38,lampMetal,false);
-  castleBox(x,4.8,z,1.25,.18,1.25,lampMetal,false);
-  const glow=castleBox(x,4.35,z,.78,1.15,.78,lampGlow,false);
+function templeSteps(cx,cz,dirX,dirZ,count=7,stepW=8,stepD=1.7,stepH=0.55){
+  // Cleaner ascending staircase: each step is its own box, rising and marching
+  // forward along (dirX,dirZ).
+  for(let i=0;i<count;i++){
+    const x=cx+dirX*stepD*i, z=cz+dirZ*stepD*i;
+    const h=stepH*(i+1);
+    templeBox(x, h/2, z, stepW, h, stepD*1.02, templeStone, true, true);
+  }
+}
+function templeDome(x,z,r=11,y=0){
+  const geo=new THREE.SphereGeometry(r,20,12,0,Math.PI*2,0,Math.PI/2.1);
+  const m=new THREE.Mesh(geo,templeStone);
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); templeObjects.push(m);
+  templeAddCollider(x,z,r*1.5,r*1.5,y+r*.55,true);
+  return m;
+}
+function templePool(x,z,r=13){
+  const geo=new THREE.CylinderGeometry(r,r*.94,1.1,28);
+  const m=new THREE.Mesh(geo,templePoolMat);
+  m.position.set(x,-.35,z);
+  scene.add(m); templeObjects.push(m);
+  const rim=templeBox(x,.25,z,r*2+1.6,.5,r*2+1.6,templeDark,false);
+  rim.geometry=new THREE.CylinderGeometry(r+.8,r+.8,.5,28);
+  const glow=new THREE.PointLight(0x3ef05a,3.6,34,1.7);
+  glow.position.set(x,2,z); scene.add(glow); templeObjects.push(glow);
+}
+function templeLamp(x,z){
+  templeBox(x,.45,z,3.2,.9,3.2,templeStone,true,true);
+  templeBox(x,2.7,z,.38,4.5,.38,lampMetal,false);
+  templeBox(x,4.8,z,1.25,.18,1.25,lampMetal,false);
+  const glow=templeBox(x,4.35,z,.78,1.15,.78,lampGlow,false);
   const cap=new THREE.Mesh(new THREE.ConeGeometry(.9,.65,4),lampMetal);
   cap.position.set(x,5.15,z); cap.rotation.y=Math.PI/4;
-  scene.add(cap); castleObjects.push(cap);
+  scene.add(cap); templeObjects.push(cap);
   const light=new THREE.PointLight(0xff8a24,3.2,38,1.55);
-  light.position.set(x,4.5,z); scene.add(light); castleObjects.push(light);
+  light.position.set(x,4.5,z); scene.add(light); templeObjects.push(light);
 }
-function buildCastleMap(){
-  castleColliders=[];
-  // Foundation and visible stone-brick courtyard floor.
-  castleBox(0,-.55,0,170,1,170,castleDark,false);
-  const ft=castleFloorBase.clone(); ft.needsUpdate=true; ft.wrapS=ft.wrapT=THREE.RepeatWrapping; ft.repeat.set(18,18);
-  const floorMat=new THREE.MeshStandardMaterial({map:ft,roughness:.96,color:0x77736e});
-  castleBox(0,.015,0,158,.08,158,floorMat,false);
+function buildTempleMap(){
+  templeColliders=[];
+  // Foundation and visible sandstone courtyard floor.
+  templeBox(0,-.55,0,170,1,170,templeDark,false);
+  const ft=templeFloorBase.clone(); ft.needsUpdate=true; ft.wrapS=ft.wrapT=THREE.RepeatWrapping; ft.repeat.set(20,20);
+  const floorMat=new THREE.MeshStandardMaterial({map:ft,roughness:.97,color:0xd6bb8a});
+  templeBox(0,.015,0,158,.08,158,floorMat,false);
 
-  // Outer walls: repeated brick scale prevents stretching.
-  castleBox(0,5,-82,164,10,5,castleStone,true,true);
-  castleBox(0,5,82,164,10,5,castleStone,true,true);
-  castleBox(-82,5,0,5,10,164,castleStone,true,true);
-  castleBox(82,5,0,5,10,164,castleStone,true,true);
-  for(let x=-76;x<=76;x+=10){castleBox(x,11,-82,5,3,5,castleStone,true,true);castleBox(x,11,82,5,3,5,castleStone,true,true);}
-  for(let z=-72;z<=72;z+=10){castleBox(-82,11,z,5,3,5,castleStone,true,true);castleBox(82,11,z,5,3,5,castleStone,true,true);}
+  // Full sandstone perimeter wall with merlons, so nobody can walk off the map.
+  templeBox(0,5,-82,164,10,5,templeStone,true,true);
+  templeBox(0,5,82,164,10,5,templeStone,true,true);
+  templeBox(-82,5,0,5,10,164,templeStone,true,true);
+  templeBox(82,5,0,5,10,164,templeStone,true,true);
+  for(let x=-76;x<=76;x+=10){templeBox(x,11,-82,5,3,5,templeStone,true,true);templeBox(x,11,82,5,3,5,templeStone,true,true);}
+  for(let z=-72;z<=72;z+=10){templeBox(-82,11,z,5,3,5,templeStone,true,true);templeBox(82,11,z,5,3,5,templeStone,true,true);}
 
-  castleTower(-72,-72,18,16);castleTower(72,-72,18,16);
-  castleTower(-72,72,18,16);castleTower(72,72,18,16);
+  // Corner towers, like the arched ruins at the edges of the reference shot.
+  templeTower(-72,-72,17,15); templeTower(72,-72,17,15);
+  templeTower(-72,72,17,15); templeTower(72,72,17,15);
 
-  // Central keep.
-  castleBox(0,7,-25,52,14,5,castleStone,true,true);
-  castleBox(-24,7,0,5,14,50,castleStone,true,true);
-  castleBox(24,7,0,5,14,50,castleStone,true,true);
-  castleBox(-15,7,25,18,14,5,castleStone,true,true);
-  castleBox(15,7,25,18,14,5,castleStone,true,true);
-  castleBox(0,14.5,0,53,1.5,52,castleDark,false);
-  castleTower(-20,-20,10,18);castleTower(20,-20,10,18);
+  // Central raised temple plaza, capped with a rounded sandstone dome — the
+  // big pale mound in the middle of the reference screenshot.
+  templeBox(0,1.5,0,46,3,46,templeStone,true,true);
+  templeBox(0,3.4,0,38,.5,38,templeDark,false);
+  templeDome(0,0,10.5,3.65);
 
-  castleBox(-48,3,0,28,6,10,castleStone,true,true);
-  castleBox(48,3,0,28,6,10,castleStone,true,true);
-  for(let i=0;i<6;i++){
-    castleBox(-34+i*3,.5+i*.55,38,3,1+i*1.1,8,castleStone,true,true);
-    castleBox(34-i*3,.5+i*.55,-42,3,1+i*1.1,8,castleStone,true,true);
-  }
-  for(const [x,z] of [[-12,48],[12,48],[-48,-28],[48,28],[0,-55],[-55,35],[55,-35]])
-    castleBox(x,1.5,z,4,3,4,castleWood,true);
+  // A ring of low walls around the plaza so it reads as a courtyard, each
+  // side broken by a staircase leading up.
+  templeBox(0,4.7,-19,20,3.4,4,templeStone,true,true);
+  templeBox(0,4.7,19,20,3.4,4,templeStone,true,true);
+  templeBox(-19,4.7,0,4,3.4,20,templeStone,true,true);
+  templeBox(19,4.7,0,4,3.4,20,templeStone,true,true);
 
-  // Banners.
-  for(const [x,z,mat] of [[-70,-62,castleBannerBlue],[70,-62,castleBannerRed],[-70,62,castleBannerRed],[70,62,castleBannerBlue]])
-    castleBox(x,10,z,6,7,.28,mat,false);
+  // Multiple staircases climbing up to the plaza from each side — mirrors
+  // the crisscrossing stairs visible throughout the screenshot.
+  templeSteps(-9.5,-42, 0, 1, 8, 7.5, 1.7, 0.5);
+  templeSteps( 9.5, 42, 0,-1, 8, 7.5, 1.7, 0.5);
+  templeSteps(-42, 9.5, 1, 0, 8, 1.7, 7.5, 0.5);
+  templeSteps( 42,-9.5,-1, 0, 8, 1.7, 7.5, 0.5);
 
-  // Fully visible lamp posts: base, post, lantern housing, cap and actual light.
-  [[-34,-34],[34,-34],[-34,34],[34,34],[-66,0],[66,0],[0,-66],[0,66]].forEach(v=>castleLamp(...v));
+  // Side buildings flanking the courtyard, matching the boxy sandstone
+  // structures around the edges of the reference shot.
+  templeBox(-58,3.5,-38,20,7,16,templeStone,true,true);
+  templeBox(58,3.5,38,20,7,16,templeStone,true,true);
+  templeBox(-58,3.5,38,20,7,16,templeStone,true,true);
+  templeBox(58,3.5,-38,20,7,16,templeStone,true,true);
 
-  castleObjects.forEach(o=>o.visible=false);
+  // Extra stairs climbing onto those side buildings.
+  templeSteps(-58,-27,0,-1,6,6,1.6,0.6);
+  templeSteps(58,27,0,1,6,6,1.6,0.6);
+  templeSteps(-46,38,1,0,6,1.6,6,0.6);
+  templeSteps(46,-38,-1,0,6,1.6,6,0.6);
+
+  // Low walkway ramparts along the inner walls, reachable via the outer
+  // stairs, for extra verticality and cover.
+  templeBox(-58,7.6,-52,20,.6,3,templeDark,false);
+  templeBox(58,7.6,52,20,.6,3,templeDark,false);
+
+  // Scattered crates for close-quarters cover.
+  for(const [x,z] of [[-14,55],[14,-55],[-55,14],[55,-14],[0,66],[0,-66]])
+    templeBox(x,1.5,z,4,3,4,templeWood,true);
+
+  // The glowing green pool near the bottom of the courtyard.
+  templePool(0,-58,13);
+
+  // Warm torches lighting the courtyard and stairs.
+  [[-30,-30],[30,-30],[-30,30],[30,30],[-66,0],[66,0],[0,66],[-58,-46],[58,46]].forEach(v=>templeLamp(...v));
+
+  templeObjects.forEach(o=>o.visible=false);
 }
-buildCastleMap();
+buildTempleMap();
 
 
-let castleNightAmbient=null;
-let castleNightMoon=null;
-function setCastleNight(on){
-  if(!castleNightAmbient){
-    castleNightAmbient=new THREE.HemisphereLight(0x23364d,0x08090c,.20);
-    castleNightMoon=new THREE.DirectionalLight(0x7894bd,.24);
-    castleNightMoon.position.set(-35,55,-20);
-    scene.add(castleNightAmbient,castleNightMoon);
+let templeNightAmbient=null;
+let templeNightMoon=null;
+function setTempleNight(on){
+  if(!templeNightAmbient){
+    templeNightAmbient=new THREE.HemisphereLight(0x5b6b82,0x2a2118,.55);
+    templeNightMoon=new THREE.DirectionalLight(0x9fb0c9,.5);
+    templeNightMoon.position.set(-35,55,-20);
+    scene.add(templeNightAmbient,templeNightMoon);
   }
-  castleNightAmbient.visible=on; castleNightMoon.visible=on;
+  templeNightAmbient.visible=on; templeNightMoon.visible=on;
   if(on){
-    scene.background=new THREE.Color(0x07101d);
-    scene.fog=new THREE.Fog(0x07101d,55,205);
+    scene.background=new THREE.Color(0x4d5a6b);
+    scene.fog=new THREE.Fog(0x4d5a6b,60,210);
   }else{
     scene.background=new THREE.Color(0x8ec9ee);
     scene.fog=new THREE.Fog(0x8ec9ee,55,220);
   }
-  // Dim the original global daylight while in the castle so lamps do the lighting.
+  // Dim the original global daylight while in the temple so its own dusky
+  // lighting + torches take over.
   scene.children.forEach(o=>{
-    if(o.isHemisphereLight && o!==castleNightAmbient) o.intensity=on?.10:.55;
-    if(o.isDirectionalLight && o!==castleNightMoon) o.intensity=on?.12:.75;
+    if(o.isHemisphereLight && o!==templeNightAmbient) o.intensity=on?.10:.55;
+    if(o.isDirectionalLight && o!==templeNightMoon) o.intensity=on?.12:.75;
   });
 }
 function applyMap(name){
-  selectedMap=name==="castle"?"castle":"original";
-  setCastleNight(selectedMap==="castle");
+  selectedMap=name==="temple"?"temple":"original";
+  setTempleNight(selectedMap==="temple");
   originalMapObjects.forEach(o=>o.visible=selectedMap==="original");
-  castleObjects.forEach(o=>o.visible=selectedMap==="castle");
+  templeObjects.forEach(o=>o.visible=selectedMap==="temple");
   colliders.length=0;
-  const source=selectedMap==="castle"?castleColliders:originalColliders;
+  const source=selectedMap==="temple"?templeColliders:originalColliders;
   source.forEach(c=>colliders.push({...c}));
-  player.x=0; player.z=selectedMap==="castle"?62:72; player.y=1.7;
+  player.x=0; player.z=selectedMap==="temple"?62:72; player.y=1.7;
   player.velocityY=0; player.onGround=true; player.yaw=0; player.pitch=0;
   updatePlayerModel();
 }
@@ -553,7 +633,7 @@ const sensitivityValue = document.getElementById("sensitivity-value");
 const resumeButton = document.getElementById("resume-button");
 const closeButton = document.getElementById("close-settings");
 
-let started = !startButton;
+let started = false;
 let settingsOpen = false;
 let sensitivity = sensitivityEl ? Number(sensitivityEl.value) : 2;
 
@@ -707,7 +787,8 @@ function updateMovement(dt) {
   f/=len; r/=len;
 
   const sprint=held("ShiftLeft","shift")||held("ShiftRight","shift");
-  const speed=sprint?11:6;
+  let speed=sprint?11:6;
+  if(isMatchBombSpeedBoosted()) speed*=BOMB_SPEED_MULTIPLIER;
 
   const dx=(-Math.sin(player.yaw)*f + Math.cos(player.yaw)*r)*speed*dt;
   const dz=(-Math.cos(player.yaw)*f - Math.sin(player.yaw)*r)*speed*dt;
@@ -1169,7 +1250,12 @@ async function enterSelectedLobby(mode,code=""){
   window.forceRoomLeaderboard?.(true);
         roomLeaderboard?.classList.add("in-room");
         window.refreshRoomLeaderboard?.();
-        if(startScreen) startScreen.style.display="flex";
+        // No more title/PLAY screen — drop straight into the queue.
+        started=true;
+        if(earlyLogoutBtn) earlyLogoutBtn.style.display="none";
+        const inGameLogout=document.getElementById("logout-btn"); if(inGameLogout) inGameLogout.style.display="none";
+        keys.clear();
+        requestMouse();
       },180);
     }
   },55);
@@ -1239,22 +1325,6 @@ document.querySelectorAll(".map-card").forEach(card=>{
 document.getElementById("map-confirm")?.addEventListener("click",()=>{
   mapSelectScreen.style.display="none";
   document.getElementById("lobby-choice-screen").style.display="flex";
-  return;
-  loadingScreen.style.display="flex";
-  loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
-  let p=0;
-  const timer=setInterval(()=>{
-    p=Math.min(100,p+10);
-    loadingBar.style.width=p+"%"; loadingPercent.textContent=p+"%";
-    if(p>=100){
-      clearInterval(timer);
-      applyMap(pendingMap);
-      setTimeout(()=>{
-        loadingScreen.style.display="none";
-        if(startScreen) startScreen.style.display="flex";
-      },180);
-    }
-  },55);
 });
 
 
@@ -1719,11 +1789,11 @@ setInterval(()=>{
 
 const MIN_PLAYERS_TO_START = 2;      // minimum players to start a match
 const QUEUE_COUNTDOWN_MS   = 30000;  // 30s queue countdown
-const ROUND_REVEAL_MS      = 5000;   // "loading screen" role reveal duration
-const BOMB_RELEASE_DELAY_MS= 5000;   // bomb holder released 5s after everyone else
+const BOMB_RELEASE_DELAY_MS= 5000;   // bomb holder frozen for 5s at the start of a round
 const BOMB_TIMER_MS        = 30000;  // 30s to tag someone
 const TAG_BONUS_MS         = 3000;   // +3s per tag
 const TAG_RADIUS           = 3.2;    // units
+const BOMB_SPEED_MULTIPLIER= 2;      // bomb holder moves 2x as fast
 const FINISHED_RESET_DELAY_MS = 8000; // time win/lose screens stay up before next queue
 
 // ---------- shared clock (fixes timers looking different/delayed per player) ----------
@@ -1757,7 +1827,6 @@ function defaultMatchState(){
     alive:[],              // ids still in the running
     deaths:[],             // ids in elimination order
     bombHolder:null,
-    revealEndsAt:0,
     releasedAt:0,
     bombEndsAt:0,
     winnerId:null,
@@ -1846,13 +1915,12 @@ function lockAndStartMatch(ids){
   // Anchor every timestamp off the countdown deadline everyone already agreed on, not off
   // this client's own Date.now() — that keeps it perfectly in sync for every viewer.
   const lockAt = matchState.countdownEndsAt || matchNow();
-  const revealEndsAt = lockAt+ROUND_REVEAL_MS;
-  const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
+  const releasedAt = lockAt+BOMB_RELEASE_DELAY_MS;
   const bombEndsAt = releasedAt+BOMB_TIMER_MS;
   broadcastMatch({
     phase:"active", countdownEndsAt:null,
     roster, alive:roster.map(r=>r.id), deaths:[],
-    bombHolder, revealEndsAt, releasedAt, bombEndsAt,
+    bombHolder, releasedAt, bombEndsAt,
     winnerId:null, tagCount:0
   });
 }
@@ -1860,7 +1928,7 @@ function lockAndStartMatch(ids){
 function resetMatchToQueue(){
   broadcastMatch({
     phase:"queue", countdownEndsAt:null, roster:[], alive:[], deaths:[],
-    bombHolder:null, revealEndsAt:0, releasedAt:0, bombEndsAt:0, winnerId:null, tagCount:0
+    bombHolder:null, releasedAt:0, bombEndsAt:0, winnerId:null, tagCount:0
   });
 }
 
@@ -1953,10 +2021,9 @@ function detonateSelf(){
     // client's own clock or randomness.
     const seed = "next:"+matchState.bombEndsAt+":"+newAlive.slice().sort().join(",");
     const nextHolder = newAlive[Math.floor(seededRandom01(seed)*newAlive.length)%newAlive.length];
-    const revealEndsAt = matchState.bombEndsAt+ROUND_REVEAL_MS;
-    const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
+    const releasedAt = matchState.bombEndsAt+BOMB_RELEASE_DELAY_MS;
     const bombEndsAt = releasedAt+BOMB_TIMER_MS;
-    broadcastMatch({alive:newAlive, deaths:newDeaths, bombHolder:nextHolder, revealEndsAt, releasedAt, bombEndsAt});
+    broadcastMatch({alive:newAlive, deaths:newDeaths, bombHolder:nextHolder, releasedAt, bombEndsAt});
   }
 }
 
@@ -1974,10 +2041,17 @@ function isMatchMovementLocked(){
   if(amDead) return !myDeathDismissed;
 
   if(matchState.phase!=="active") return false;
-  const now=matchNow();
-  if(now<matchState.revealEndsAt) return true;
-  if(matchState.bombHolder===myId && now<matchState.releasedAt) return true;
+  // Only the bomb holder is frozen at the start of a round — everyone else can move
+  // immediately.
+  if(matchState.bombHolder===myId && matchNow()<matchState.releasedAt) return true;
   return false;
+}
+
+function isMatchBombSpeedBoosted(){
+  if(matchState.phase!=="active") return false;
+  if(matchState.bombHolder!==myId) return false;
+  if(matchState.deaths.includes(myId)) return false;
+  return matchNow()>=matchState.releasedAt;
 }
 
 // ---------- UI ----------
@@ -2020,16 +2094,6 @@ function updateQueueHud(){
     title.textContent="READY TO START";
     sub.textContent=count+" players queued";
   }
-}
-
-function renderRoundReveal(now){
-  const iAmHolder = matchState.bombHolder===myId;
-  document.getElementById("round-role-title").textContent = iAmHolder ? "💣 YOU HAVE THE BOMB" : "🏃 GET READY TO RUN";
-  document.getElementById("round-role-sub").textContent = iAmHolder
-    ? "Everyone else is about to run. Chase them down and tag someone!"
-    : ("Don't get tagged! "+rosterName(matchState.bombHolder)+" has the bomb.");
-  const s=Math.max(0,Math.ceil((matchState.revealEndsAt-now)/1000));
-  document.getElementById("round-role-timer").textContent = s>0 ? String(s) : "GO!";
 }
 
 function renderRoundReleaseWait(now){
@@ -2101,9 +2165,9 @@ function updateRoundOverlays(){
 
   let showRound=false, showKill=false, showWin=false;
 
-  if(inMatch && !amDead && matchState.phase==="active" && now<matchState.revealEndsAt){
-    showRound=true; renderRoundReveal(now);
-  }else if(inMatch && !amDead && matchState.phase==="active" && matchState.bombHolder===myId && now>=matchState.revealEndsAt && now<matchState.releasedAt){
+  // Only the bomb holder ever sees the freeze/reveal screen — everyone else is free to
+  // move and just sees the HUD banner below.
+  if(inMatch && !amDead && matchState.phase==="active" && matchState.bombHolder===myId && now<matchState.releasedAt){
     showRound=true; renderRoundReleaseWait(now);
   }
 
@@ -2140,8 +2204,9 @@ function updateRoundOverlays(){
     };
   }
 
-  // Bomb HUD + tag prompt only while actively, freely playing.
-  const playing = inMatch && !amDead && matchState.phase==="active" && now>=matchState.revealEndsAt &&
+  // Bomb HUD + tag prompt for everyone who's actively, freely playing (non-holders are
+  // always "playing" the instant the round starts; the holder joins once released).
+  const playing = inMatch && !amDead && matchState.phase==="active" &&
     (matchState.bombHolder!==myId || now>=matchState.releasedAt);
 
   bombHud.style.display = playing ? "flex" : "none";
@@ -2149,7 +2214,7 @@ function updateRoundOverlays(){
     const remainSec = Math.max(0, Math.ceil((matchState.bombEndsAt-now)/1000));
     const roleEl=document.getElementById("bomb-hud-role");
     if(matchState.bombHolder===myId){
-      roleEl.textContent="💣 YOU HAVE THE BOMB";
+      roleEl.textContent="💣 YOU HAVE THE BOMB — 2x SPEED";
       bombHud.classList.add("bomb-active");
     }else{
       roleEl.textContent="🏃 RUN — "+rosterName(matchState.bombHolder)+" has the bomb";

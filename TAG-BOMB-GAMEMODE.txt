@@ -22,8 +22,28 @@ What's new:
 - In the final 1v1, the player who gets blown up instead sees a
   RETURN TO MAIN MENU button, and the survivor sees a "YOU WON!"
   screen with a RETURN TO LOBBY button.
-- A small HUD shows the bomb countdown, who currently has the bomb,
-  and an [E] TAG prompt when someone is close enough to tag.
+- When the round begins, only the player who starts with the bomb is
+  frozen — for 5 seconds — before being released. Everyone else can
+  move immediately, no waiting.
+- The bomb holder moves 2x as fast as everyone else while they have it.
+- Timers are kept in sync across every device: instead of trusting
+  each client's own clock, everyone recalibrates against whoever most
+  recently sent a match update, and every round timestamp is chained
+  off already-agreed values (the queue deadline, the previous bomb
+  deadline) instead of "my own clock right now." That's also what
+  fixed an earlier bug where two clients could occasionally disagree
+  about who started with the bomb.
+- The room now starts a match with as few as 2 players.
+- A bouncing 💣 icon floats above whoever currently has the bomb, so
+  everyone in the lobby can see who to run from (or chase).
+- The title screen ("CAN'T CATCH ME" / PLAY button) has been removed.
+  Clicking JOIN PUBLIC now drops you straight into the queue as soon
+  as the room finishes loading.
+- The CASTLE map has been removed, including from the map-select menu.
+  In its place is a new TEMPLE map: a sandstone courtyard with corner
+  towers, a domed central plaza, multiple staircases leading up to
+  raised walkways and side buildings, and a glowing green pool near
+  one edge — styled after the reference screenshot.
 
 How it's synced (no game server):
 - All of this rides on the same Supabase Realtime channel already
