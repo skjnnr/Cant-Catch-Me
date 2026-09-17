@@ -1717,7 +1717,7 @@ setInterval(()=>{
 // Every client applies the latest broadcast state it sees (highest "seq"
 // wins), so everyone converges even though nobody is a real server.
 
-const MIN_PLAYERS_TO_START = 7;      // "above 6 players"
+const MIN_PLAYERS_TO_START = 2;      // minimum players to start a match
 const QUEUE_COUNTDOWN_MS   = 30000;  // 30s queue countdown
 const ROUND_REVEAL_MS      = 5000;   // "loading screen" role reveal duration
 const BOMB_RELEASE_DELAY_MS= 5000;   // bomb holder released 5s after everyone else

@@ -2,10 +2,10 @@ TAG / BOMB GAME MODE
 
 What's new:
 - The room is now a real match, not just free-roam.
-- Once more than 6 players (7+) are in the room, a 30-second queue
-  countdown starts. Anyone who clicks JOIN PUBLIC can still get in
-  during those 30 seconds. When the countdown hits 0 the roster locks
-  and nobody else can join that match.
+- Once 2+ players are in the room, a 30-second queue countdown
+  starts. Anyone who clicks JOIN PUBLIC can still get in during
+  those 30 seconds. When the countdown hits 0 the roster locks and
+  nobody else can join that match.
 - A round-loading screen reveals roles: the chosen player sees
   "YOU HAVE THE BOMB", everyone else sees "GET READY TO RUN".
 - When the loading screen ends, everyone else can move immediately,
