@@ -1,0 +1,20 @@
+CAN'T CATCH ME — NETWORKED BOMB FEATURE
+
+What this build does:
+- Exactly ONE red circle is used.
+- public.game_matches.bomb_holder is the authoritative bomb owner.
+- The active-match watcher drives the circle directly from Supabase.
+- The circle follows the local holder or the correct remote multiplayer model.
+- Remote holder resolution uses Supabase UUID first and username fallback second.
+- Successful touch-tag calls tag_player_safe on the server.
+- Server transfers bomb and adds exactly 3 seconds.
+- A room Broadcast sends the transfer immediately to every client.
+- Supabase match polling remains the fallback/authority if a Broadcast is missed.
+- Bomb expiration uses detonate_bomb_safe and eliminates the current holder.
+- Surviving players advance to another round; last survivor wins.
+- Existing working movement and room multiplayer are preserved.
+
+INSTALL:
+1. Run NETWORKED-BOMB-FEATURE.sql once in Supabase SQL Editor.
+2. Replace the GitHub game files with this ZIP's game files.
+3. Hard refresh both test browsers after GitHub Pages updates.

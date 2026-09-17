@@ -1499,6 +1499,9 @@ async function startMultiplayer(){
    }
    r.userId=p.userId||r.userId||null;
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
+ }).on("broadcast",{event:"bomb-transfer"},({payload:p})=>{
+   if(!p || p.matchId!==dbMatchId || !p.holderId)return;
+   getLoggedInUserId().then(uid=>setNetworkBombHolder(p.holderId,uid,p.holderUsername||null));
  }).on("presence",{event:"sync"},()=>{
    if(!ch)return;
    const state=ch.presenceState();
@@ -1941,7 +1944,7 @@ async function syncBombGameplay(){
  const localUserId=session?.user?.id||null;
  const holder=players.find(p=>p.user_id===m.bomb_holder);
  bombOwnerText.textContent="BOMB: "+(holder?.username||"Selecting...");
- updateBombHolderRing(m.bomb_holder,localUserId);
+ setNetworkBombHolder(m.bomb_holder,localUserId,holder?.username||null);
 
  if(m.round_number!==roundSeen){
    roundSeen=m.round_number;
@@ -1995,9 +1998,12 @@ async function attemptBombTag(players){
 
  // The bomb holder automatically tags an alive player by touching them.
  for(const [,r] of remotes){
-   const targetUserId=r.userId||null;
+   const target=players.find(p=>
+     (r.userId && p.user_id===r.userId) ||
+     ((!r.userId) && (p.username||"").toLowerCase()===(r.username||"").toLowerCase())
+   );
+   const targetUserId=target?.user_id||null;
    if(!targetUserId || targetUserId===localUserId || !r.m)continue;
-   const target=players.find(p=>p.user_id===targetUserId);
    if(!target || target.eliminated || target.alive===false)continue;
 
    const dx=player.x-r.m.position.x;
@@ -2009,20 +2015,26 @@ async function attemptBombTag(players){
        tagged_player:targetUserId
      });
      if(error)console.warn("Tag rejected:",error);
-     else console.log("Bomb transferred:",data);
+     else{
+       console.log("Bomb transferred:",data);
+       const targetName=target?.username||r.username||null;
+       setNetworkBombHolder(targetUserId,localUserId,targetName);
+       if(ch && multiplayerStarted){
+         ch.send({type:"broadcast",event:"bomb-transfer",payload:{
+           matchId:dbMatchId,
+           holderId:targetUserId,
+           holderUsername:targetName
+         }}).catch(()=>{});
+       }
+     }
      return;
    }
  }
 }
 function showBombResult(won){
  if(bombLoop){clearInterval(bombLoop);bombLoop=null;}
- visualBombHolderId=null;
- localBombGroundCircle.visible=false;
- localBombWaistCircle.visible=false;
- for(const [,pair] of remoteBombCircles){
-   pair.ground.visible=false;
-   pair.waist.visible=false;
- }
+ setNetworkBombHolder(null,networkBombLocalUserId);
+ bombCircle.visible=false;
  bombResultScreen.style.display="flex";
  bombResultTitle.textContent=won?"YOU WON!":"YOU HAVE BEEN BLOWN UP!";
  bombResultSub.textContent=won?"You are the last player remaining.":"You were eliminated from this match.";
@@ -2237,6 +2249,10 @@ async function watchActiveMatch(){
     .eq("id",dbMatchId).single();
   if(error)return console.warn("Active watcher:",error);
   if(m.status==="active" && m.bomb_holder){
+    // The match row is authoritative. Drive the bomb visual directly from it,
+    // even before/independent of the bomb gameplay polling loop.
+    const watcherUid=await getLoggedInUserId();
+    setNetworkBombHolder(m.bomb_holder,watcherUid);
     // Enter actual playable state. Do NOT clear keys on every 500ms poll.
     // That was interrupting held WASD keys and causing glitchy movement.
     started=true;
@@ -2271,89 +2287,76 @@ activeMatchWatcher=setInterval(watchActiveMatch,500);
 watchActiveMatch();
 
 
-// ===== BOMB HOLDER RED CIRCLE - ROBUST FIX =====
-let visualBombHolderId=null;
-let visualLocalUserId=null;
+// ===== NETWORKED BOMB HOLDER INDICATOR =====
+// One red circle. game_matches.bomb_holder is authoritative.
+// Realtime Broadcast makes transfers appear immediately; DB polling remains the fallback.
+let networkBombHolderId=null;
+let networkBombLocalUserId=null;
+let networkBombHolderUsername=null;
 
-function makeGroundBombCircle(){
-  const mesh=new THREE.Mesh(
-    new THREE.RingGeometry(1.25,1.58,64),
-    new THREE.MeshBasicMaterial({
-      color:0xff1010,side:THREE.DoubleSide,
-      transparent:true,opacity:1,depthTest:false,depthWrite:false
-    })
-  );
-  mesh.rotation.x=-Math.PI/2;
-  mesh.renderOrder=9999;
-  scene.add(mesh);
-  mesh.visible=false;
-  return mesh;
-}
-function makeWaistBombCircle(){
-  const mesh=new THREE.Mesh(
-    new THREE.TorusGeometry(1.05,.13,16,64),
-    new THREE.MeshBasicMaterial({
-      color:0xff1010,transparent:true,opacity:1,
-      depthTest:false,depthWrite:false
-    })
-  );
-  mesh.rotation.x=Math.PI/2;
-  mesh.renderOrder=10000;
-  scene.add(mesh);
-  mesh.visible=false;
-  return mesh;
-}
+const bombCircle=new THREE.Mesh(
+  new THREE.RingGeometry(1.22,1.55,72),
+  new THREE.MeshBasicMaterial({
+    color:0xff1616,
+    side:THREE.DoubleSide,
+    transparent:true,
+    opacity:1,
+    depthTest:false,
+    depthWrite:false
+  })
+);
+bombCircle.rotation.x=-Math.PI/2;
+bombCircle.renderOrder=100000;
+bombCircle.frustumCulled=false;
+bombCircle.visible=false;
+scene.add(bombCircle);
 
-const localBombGroundCircle=makeGroundBombCircle();
-const localBombWaistCircle=makeWaistBombCircle();
-const remoteBombCircles=new Map();
-
-function getRemoteBombCircles(networkId){
-  let pair=remoteBombCircles.get(networkId);
-  if(!pair){
-    pair={ground:makeGroundBombCircle(),waist:makeWaistBombCircle()};
-    remoteBombCircles.set(networkId,pair);
+function setNetworkBombHolder(holderId,localId,holderUsername=null){
+  networkBombHolderId=holderId||null;
+  networkBombLocalUserId=localId||networkBombLocalUserId||null;
+  if(holderUsername)networkBombHolderUsername=holderUsername;
+  if(!holderId){
+    networkBombHolderUsername=null;
+    bombCircle.visible=false;
   }
-  return pair;
 }
 
-function updateBombHolderRing(holderUserId,localUserId){
-  visualBombHolderId=holderUserId||null;
-  visualLocalUserId=localUserId||null;
-  updateBombCirclePositions();
+function updateBombHolderRing(holderId,localId){
+  setNetworkBombHolder(holderId,localId);
 }
 
-function updateBombCirclePositions(){
-  const localHasBomb=!!visualBombHolderId &&
-    visualBombHolderId===visualLocalUserId;
-
-  localBombGroundCircle.position.set(player.x,.09,player.z);
-  localBombWaistCircle.position.set(player.x,1.05,player.z);
-  localBombGroundCircle.visible=localHasBomb;
-  localBombWaistCircle.visible=localHasBomb;
-
-  const live=new Set();
-  for(const [networkId,r] of remotes){
-    live.add(networkId);
-    const pair=getRemoteBombCircles(networkId);
-    const hasBomb=!!visualBombHolderId && !!r.userId &&
-      r.userId===visualBombHolderId;
-
-    pair.ground.position.set(r.m.position.x,.09,r.m.position.z);
-    pair.waist.position.set(r.m.position.x,1.05,r.m.position.z);
-    pair.ground.visible=hasBomb;
-    pair.waist.visible=hasBomb;
+function findBombRemote(){
+  if(!networkBombHolderId)return null;
+  // Best path: authenticated Supabase UUID carried in room Presence/state.
+  for(const [,r] of remotes){
+    if(r.userId===networkBombHolderId)return r;
   }
-  for(const [id,pair] of remoteBombCircles){
-    if(!live.has(id)){
-      pair.ground.visible=false;
-      pair.waist.visible=false;
+  // Fallback: match the authoritative match_players username.
+  if(networkBombHolderUsername){
+    for(const [,r] of remotes){
+      if((r.username||"").toLowerCase()===networkBombHolderUsername.toLowerCase())return r;
     }
   }
+  return null;
 }
 
-function animateBombCircle(){
-  updateBombCirclePositions();
-  requestAnimationFrame(animateBombCircle);
+function animateNetworkBombCircle(){
+  let shown=false;
+
+  if(networkBombHolderId && networkBombHolderId===networkBombLocalUserId){
+    // player.y is eye height; ground is ~1.7 below it.
+    bombCircle.position.set(player.x,player.y-1.61,player.z);
+    shown=true;
+  }else{
+    const r=findBombRemote();
+    if(r?.m){
+      // Remote model origin is at eye-ish height too.
+      bombCircle.position.set(r.m.position.x,r.m.position.y-1.14,r.m.position.z);
+      shown=true;
+    }
+  }
+
+  bombCircle.visible=shown;
+  requestAnimationFrame(animateNetworkBombCircle);
 }
-requestAnimationFrame(animateBombCircle);
+requestAnimationFrame(animateNetworkBombCircle);
