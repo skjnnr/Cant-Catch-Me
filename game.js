@@ -2261,35 +2261,80 @@ activeMatchWatcher=setInterval(watchActiveMatch,500);
 watchActiveMatch();
 
 
-// ===== BOMB HOLDER RED RING =====
-const bombRingMaterial=new THREE.MeshBasicMaterial({
-  color:0xff2020,transparent:true,opacity:.95,side:THREE.DoubleSide,depthTest:true
-});
+// ===== BOMB HOLDER RED RING - VISIBLE FIX =====
+// Scene-level rings are used instead of attaching the ring under the player model.
+// The previous remote ring could end up below the road and become invisible.
+let visualBombHolderId=null;
+let visualLocalUserId=null;
+
 function createBombRing(){
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.12,.10,12,48),bombRingMaterial.clone());
-  ring.rotation.x=Math.PI/2;
-  ring.renderOrder=5;
+  const geometry=new THREE.RingGeometry(1.20,1.48,64);
+  const material=new THREE.MeshBasicMaterial({
+    color:0xff1717,
+    transparent:true,
+    opacity:.95,
+    side:THREE.DoubleSide,
+    depthTest:false,
+    depthWrite:false
+  });
+  const ring=new THREE.Mesh(geometry,material);
+  ring.rotation.x=-Math.PI/2;
+  ring.renderOrder=999;
+  scene.add(ring);
+  ring.visible=false;
   return ring;
 }
-const localBombRing=createBombRing();
-scene.add(localBombRing);
-localBombRing.visible=false;
 
-function ensureRemoteBombRing(r){
-  if(r.bombRing)return r.bombRing;
-  const ring=createBombRing();
-  ring.position.y=-1.72;
-  r.m.add(ring);
-  r.bombRing=ring;
+const localBombRing=createBombRing();
+const remoteBombRings=new Map();
+
+function getRemoteBombRing(id){
+  let ring=remoteBombRings.get(id);
+  if(!ring){
+    ring=createBombRing();
+    remoteBombRings.set(id,ring);
+  }
   return ring;
 }
 
 function updateBombHolderRing(holderUserId,localUserId){
-  localBombRing.position.set(player.x,.055,player.z);
+  visualBombHolderId=holderUserId||null;
+  visualLocalUserId=localUserId||null;
+
+  // Local player's ring sits directly on top of the ground.
+  localBombRing.position.set(player.x,.075,player.z);
   localBombRing.visible=!!holderUserId && holderUserId===localUserId;
 
-  for(const [,r] of remotes){
-    const ring=ensureRemoteBombRing(r);
+  const activeRemoteIds=new Set();
+  for(const [networkId,r] of remotes){
+    const ring=getRemoteBombRing(networkId);
+    activeRemoteIds.add(networkId);
+
+    // Remote player models are interpolated, so follow their current world X/Z.
+    ring.position.set(r.m.position.x,.075,r.m.position.z);
     ring.visible=!!holderUserId && !!r.userId && r.userId===holderUserId;
   }
+
+  // Hide rings belonging to players no longer in this room.
+  for(const [networkId,ring] of remoteBombRings){
+    if(!activeRemoteIds.has(networkId)) ring.visible=false;
+  }
 }
+
+// Keep the visible ring glued to the bomb holder every rendered frame,
+// even between the 100ms Supabase bomb-state polls.
+function animateBombRingVisual(){
+  if(localBombRing){
+    localBombRing.position.set(player.x,.075,player.z);
+    localBombRing.visible=!!visualBombHolderId && visualBombHolderId===visualLocalUserId;
+  }
+
+  for(const [networkId,r] of remotes){
+    const ring=getRemoteBombRing(networkId);
+    ring.position.set(r.m.position.x,.075,r.m.position.z);
+    ring.visible=!!visualBombHolderId && !!r.userId && r.userId===visualBombHolderId;
+  }
+
+  requestAnimationFrame(animateBombRingVisual);
+}
+requestAnimationFrame(animateBombRingVisual);

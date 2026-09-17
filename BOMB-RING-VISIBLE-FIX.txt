@@ -1,0 +1,12 @@
+Bomb ring visibility fix.
+
+No Supabase SQL changes are required.
+
+Changes:
+- Replaced the old Torus ring with a large flat red RingGeometry.
+- Ring is scene-level, so remote-player model offsets cannot put it underground.
+- Ring sits just above the road/ground at Y=0.075.
+- depthTest is disabled so the bright red ring remains visible.
+- Ring follows the bomb holder every animation frame.
+- When the bomb transfers, the old ring hides and the new holder's ring appears.
+- Existing multiplayer, movement, tagging, and bomb SQL from Bomb Gameplay V2 are retained.
