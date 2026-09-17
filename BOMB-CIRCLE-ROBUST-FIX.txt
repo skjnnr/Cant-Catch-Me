@@ -1,0 +1,10 @@
+No new SQL required.
+
+This fixes two likely reasons the bomb circle was invisible:
+1. Remote player Supabase user IDs are now copied from Realtime Presence immediately,
+   instead of waiting for a movement broadcast before the bomb holder can be matched.
+2. The bomb holder now has TWO bright red indicators:
+   - a thick ground circle around their feet
+   - a thick red waist-level circle around the player model
+Both ignore depth testing and follow the holder every rendered frame.
+When the bomb transfers, both circles transfer with it.
