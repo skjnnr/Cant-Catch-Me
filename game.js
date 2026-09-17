@@ -1726,6 +1726,27 @@ const TAG_BONUS_MS         = 3000;   // +3s per tag
 const TAG_RADIUS           = 3.2;    // units
 const FINISHED_RESET_DELAY_MS = 8000; // time win/lose screens stay up before next queue
 
+// ---------- shared clock (fixes timers looking different/delayed per player) ----------
+// Every device's Date.now() can be slightly off from everyone else's. Instead of trusting
+// each client's own clock, we track how far ahead/behind we are from whichever client most
+// recently authored a match broadcast, and use that corrected "matchNow()" everywhere a
+// countdown is displayed or checked. All the round timestamps (reveal/release/bomb end)
+// are also chained off of already-agreed values (countdownEndsAt, previous bombEndsAt)
+// instead of the acting client's own Date.now(), so nothing drifts round after round.
+let clockOffsetMs = 0;
+function matchNow(){ return Date.now()+clockOffsetMs; }
+
+// Deterministic PRNG so that even if two clients briefly race to lock in a match at the
+// same time, they compute the exact same bomb holder instead of disagreeing.
+function seededRandom01(seed){
+  let h = 2166136261>>>0;
+  for(let i=0;i<seed.length;i++){ h ^= seed.charCodeAt(i); h = Math.imul(h,16777619); }
+  h += 0x6D2B79F5;
+  let t = Math.imul(h ^ (h>>>15), h | 1);
+  t ^= t + Math.imul(t ^ (t>>>7), t | 61);
+  return ((t ^ (t>>>14))>>>0) / 4294967296;
+}
+
 function defaultMatchState(){
   return {
     phase:"queue",        // "queue" | "active" | "finished"
@@ -1743,6 +1764,7 @@ function defaultMatchState(){
     tagCount:0
   };
 }
+
 
 let matchState = defaultMatchState();
 let myDeathDismissed = false;
@@ -1773,6 +1795,13 @@ function rosterName(id){
 function applyIncomingMatch(payload){
   if(!payload || typeof payload.seq!=="number") return;
   if(payload.seq < matchState.seq) return; // stale, ignore
+  // Recalibrate our shared clock against whoever authored this update, so
+  // every countdown we display lines up with what they're seeing, not our
+  // own device's raw clock.
+  if(typeof payload.updatedAt==="number"){
+    const sample = payload.updatedAt - Date.now();
+    clockOffsetMs = clockOffsetMs===0 ? sample : (clockOffsetMs*0.7 + sample*0.3);
+  }
   matchState = payload;
   onMatchChanged();
 }
@@ -1791,6 +1820,7 @@ function onMatchChanged(){
   maybeShowEliminationToast();
   updateQueueHud();
   updateRoundOverlays();
+  updateBombIndicators();
 }
 
 // ---------- host-side lobby/queue logic ----------
@@ -1806,11 +1836,17 @@ function amIHost(){
 
 function lockAndStartMatch(ids){
   const state = ch.presenceState()||{};
-  const roster = ids.map(id=>({id, username:(state[id]?.[0]?.username)||"Player"}));
+  const sortedIds = ids.slice().sort();
+  const roster = sortedIds.map(id=>({id, username:(state[id]?.[0]?.username)||"Player"}));
   if(roster.length<2) return;
-  const bombHolder = roster[Math.floor(Math.random()*roster.length)].id;
-  const now=Date.now();
-  const revealEndsAt = now+ROUND_REVEAL_MS;
+  // Deterministic pick: if two clients race to lock the same countdown, they land on the
+  // exact same bomb holder instead of disagreeing.
+  const seed = "lock:"+(matchState.countdownEndsAt||0)+":"+sortedIds.join(",");
+  const bombHolder = roster[Math.floor(seededRandom01(seed)*roster.length)%roster.length].id;
+  // Anchor every timestamp off the countdown deadline everyone already agreed on, not off
+  // this client's own Date.now() — that keeps it perfectly in sync for every viewer.
+  const lockAt = matchState.countdownEndsAt || matchNow();
+  const revealEndsAt = lockAt+ROUND_REVEAL_MS;
   const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
   const bombEndsAt = releasedAt+BOMB_TIMER_MS;
   broadcastMatch({
@@ -1840,7 +1876,7 @@ function scheduleFinishReset(){
 function hostTick(){
   if(!ch || !multiplayerLoggedIn || !started) return;
   if(!amIHost()) return;
-  const now=Date.now();
+  const now=matchNow();
 
   if(matchState.phase==="queue"){
     const ids = computeQueueEligibleIds();
@@ -1882,7 +1918,7 @@ function attemptTag(){
   if(matchState.phase!=="active") return;
   if(matchState.bombHolder!==myId) return;
   if(matchState.deaths.includes(myId)) return;
-  const now=Date.now();
+  const now=matchNow();
   if(now<matchState.releasedAt) return;
 
   let bestId=null,bestDist=TAG_RADIUS;
@@ -1895,16 +1931,17 @@ function attemptTag(){
   }
   if(!bestId) return;
 
-  const remaining=Math.max(0, matchState.bombEndsAt-now);
+  // Extend off the already-agreed bomb-end time (not "now + remaining"), so the new
+  // deadline is identical for every viewer no matter whose clock computed it.
+  const newBombEndsAt = Math.max(matchState.bombEndsAt, now) + TAG_BONUS_MS;
   showElimToast("💣 You tagged "+rosterName(bestId)+"!");
-  broadcastMatch({bombHolder:bestId, bombEndsAt: now+remaining+TAG_BONUS_MS, tagCount:(matchState.tagCount||0)+1});
+  broadcastMatch({bombHolder:bestId, bombEndsAt:newBombEndsAt, tagCount:(matchState.tagCount||0)+1});
 }
 
 function detonateSelf(){
   if(matchState.bombHolder!==myId) return;
   if(matchState.deaths.includes(myId)) return;
 
-  const now=Date.now();
   const newAlive = matchState.alive.filter(id=>id!==myId);
   const newDeaths = [...matchState.deaths, myId];
 
@@ -1912,8 +1949,11 @@ function detonateSelf(){
     broadcastMatch({phase:"finished", alive:newAlive, deaths:newDeaths, winnerId:newAlive[0]||null, bombHolder:null});
     scheduleFinishReset();
   }else{
-    const nextHolder = newAlive[Math.floor(Math.random()*newAlive.length)];
-    const revealEndsAt = now+ROUND_REVEAL_MS;
+    // Deterministic pick from the agreed detonation moment, so nothing depends on this
+    // client's own clock or randomness.
+    const seed = "next:"+matchState.bombEndsAt+":"+newAlive.slice().sort().join(",");
+    const nextHolder = newAlive[Math.floor(seededRandom01(seed)*newAlive.length)%newAlive.length];
+    const revealEndsAt = matchState.bombEndsAt+ROUND_REVEAL_MS;
     const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
     const bombEndsAt = releasedAt+BOMB_TIMER_MS;
     broadcastMatch({alive:newAlive, deaths:newDeaths, bombHolder:nextHolder, revealEndsAt, releasedAt, bombEndsAt});
@@ -1934,7 +1974,7 @@ function isMatchMovementLocked(){
   if(amDead) return !myDeathDismissed;
 
   if(matchState.phase!=="active") return false;
-  const now=Date.now();
+  const now=matchNow();
   if(now<matchState.revealEndsAt) return true;
   if(matchState.bombHolder===myId && now<matchState.releasedAt) return true;
   return false;
@@ -1973,7 +2013,7 @@ function updateQueueHud(){
     title.textContent="WAITING FOR PLAYERS";
     sub.textContent=count+" / "+MIN_PLAYERS_TO_START+" needed to start";
   }else if(matchState.countdownEndsAt){
-    const s=Math.max(0,Math.ceil((matchState.countdownEndsAt-Date.now())/1000));
+    const s=Math.max(0,Math.ceil((matchState.countdownEndsAt-matchNow())/1000));
     title.textContent="MATCH STARTING IN "+s+"s";
     sub.textContent=count+" players queued — join public still works";
   }else{
@@ -1999,8 +2039,53 @@ function renderRoundReleaseWait(now){
   document.getElementById("round-role-timer").textContent=s+"s";
 }
 
+// ---------- bomb indicator above heads ----------
+function makeBombIcon(){
+  const c=document.createElement("canvas"); c.width=128; c.height=128;
+  const x=c.getContext("2d");
+  x.font="96px Arial"; x.textAlign="center"; x.textBaseline="middle";
+  x.fillText("💣",64,70);
+  const tex=new THREE.CanvasTexture(c);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
+  const sp=new THREE.Sprite(mat);
+  sp.scale.set(1.05,1.05,1);
+  sp.position.set(0,2.25,0);
+  sp.userData.bombIndicator=true;
+  sp.renderOrder=999;
+  return sp;
+}
+
+function setBombIndicator(model, show){
+  if(!model) return;
+  let icon = model.children.find(o=>o.userData?.bombIndicator);
+  if(show && !icon){
+    model.add(makeBombIcon());
+  }else if(!show && icon){
+    model.remove(icon);
+    icon.material?.map?.dispose?.();
+    icon.material?.dispose?.();
+  }
+}
+
+function updateBombIndicators(){
+  const activeBomb = matchState.phase==="active" && matchState.bombHolder && !matchState.deaths.includes(matchState.bombHolder);
+  const holder = activeBomb ? matchState.bombHolder : null;
+
+  for(const [id,r] of remotes) setBombIndicator(r.m, holder===id);
+  if(typeof playerModel!=="undefined" && playerModel) setBombIndicator(playerModel, holder===myId);
+
+  // Little bob/bounce so it reads as "live" above whoever has it.
+  const bob = Math.sin(Date.now()/280)*0.08;
+  const applyBob=(model)=>{
+    const icon=model?.children?.find(o=>o.userData?.bombIndicator);
+    if(icon) icon.position.y = 2.25+bob;
+  };
+  for(const r of remotes.values()) applyBob(r.m);
+  if(typeof playerModel!=="undefined") applyBob(playerModel);
+}
+
 function updateRoundOverlays(){
-  const now=Date.now();
+  const now=matchNow();
   const roundScreen=document.getElementById("round-screen");
   const killScreen=document.getElementById("kill-screen");
   const winScreen=document.getElementById("win-screen");
@@ -2079,13 +2164,13 @@ function updateRoundOverlays(){
 }
 
 // ---------- timers ----------
-setInterval(()=>{ if(started) updateRoundOverlays(); }, 250);
+setInterval(()=>{ if(started){ updateRoundOverlays(); updateBombIndicators(); } }, 250);
 setInterval(()=>{ if(started) updateQueueHud(); }, 500);
 setInterval(hostTick, 900);
 setInterval(()=>{
   if(!started) return;
   if(matchState.phase==="active" && matchState.bombHolder===myId && !matchState.deaths.includes(myId)){
-    const now=Date.now();
+    const now=matchNow();
     if(now>=matchState.releasedAt && now>=matchState.bombEndsAt) detonateSelf();
   }
 }, 300);
