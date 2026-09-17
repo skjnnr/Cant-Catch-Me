@@ -1,0 +1,56 @@
+TAG / BOMB GAME MODE
+
+What's new:
+- The room is now a real match, not just free-roam.
+- Once more than 6 players (7+) are in the room, a 30-second queue
+  countdown starts. Anyone who clicks JOIN PUBLIC can still get in
+  during those 30 seconds. When the countdown hits 0 the roster locks
+  and nobody else can join that match.
+- A round-loading screen reveals roles: the chosen player sees
+  "YOU HAVE THE BOMB", everyone else sees "GET READY TO RUN".
+- When the loading screen ends, everyone else can move immediately,
+  but the bomb holder is frozen for 5 more seconds before being
+  released ("RELEASING IN Xs...").
+- Once released, the bomb holder has 30 seconds to tag someone
+  (walk close and press E). Each tag adds +3 seconds to the bomb
+  timer and passes the bomb to the tagged player.
+- If time runs out, the bomb holder is eliminated and sees
+  "YOU HAVE BEEN BLOWN UP" with a RETURN TO LOBBY button. Every
+  surviving player is immediately put into a new round with a new
+  random bomb holder chosen from those still alive.
+- This repeats until 1 player remains.
+- In the final 1v1, the player who gets blown up instead sees a
+  RETURN TO MAIN MENU button, and the survivor sees a "YOU WON!"
+  screen with a RETURN TO LOBBY button.
+- A small HUD shows the bomb countdown, who currently has the bomb,
+  and an [E] TAG prompt when someone is close enough to tag.
+
+How it's synced (no game server):
+- All of this rides on the same Supabase Realtime channel already
+  used for movement. A new "match" broadcast event carries the full
+  round state (phase, roster, alive players, bomb holder, timers).
+- The player with the lowest connection id in the room acts as the
+  "host" and is the only one who starts the queue countdown and
+  locks in a new match's roster.
+- Whoever currently holds the bomb is authoritative for tagging and
+  for detonating (their own browser decides and broadcasts it),
+  since they're the one with the freshest data about who's in reach.
+- Every client just applies whichever match update it has last
+  received, so everyone converges without needing a dedicated server.
+
+Known limitations:
+- Eliminated players can freely walk around the map again as soon as
+  they dismiss the kill screen (there's no separate spectator camera).
+- If the current bomb holder's browser closes at the exact instant
+  the bomb should detonate, there's no server to force it, so that
+  edge case isn't specifically handled.
+- Tagging is proximity + an E press, not an animation/hit-reg system.
+
+Tuning constants (top of the new section in game.js):
+MIN_PLAYERS_TO_START, QUEUE_COUNTDOWN_MS, ROUND_REVEAL_MS,
+BOMB_RELEASE_DELAY_MS, BOMB_TIMER_MS, TAG_BONUS_MS, TAG_RADIUS,
+FINISHED_RESET_DELAY_MS.
+
+GITHUB PAGES:
+Replace index.html, style.css and game.js with these files.
+Commit the changes, then refresh the site with Ctrl+Shift+R.

@@ -120,6 +120,46 @@
 </div>
 <div id="crosshair">+</div>
 
+<div id="queue-hud">
+  <div id="queue-hud-title">WAITING FOR PLAYERS</div>
+  <div id="queue-hud-sub">0 / 7 needed</div>
+</div>
+
+<div id="bomb-hud">
+  <div id="bomb-hud-role"></div>
+  <div id="bomb-hud-timer"></div>
+</div>
+
+<div id="tag-prompt">[E] TAG</div>
+
+<div id="elim-toast"></div>
+
+<div id="round-screen">
+  <div class="round-box">
+    <div id="round-role-title">GET READY</div>
+    <div id="round-role-sub"></div>
+    <div id="round-role-timer"></div>
+  </div>
+</div>
+
+<div id="kill-screen">
+  <div class="round-box">
+    <div class="round-icon">💥</div>
+    <h1>YOU HAVE BEEN BLOWN UP</h1>
+    <p id="kill-screen-sub"></p>
+    <button id="kill-screen-btn">RETURN TO LOBBY</button>
+  </div>
+</div>
+
+<div id="win-screen">
+  <div class="round-box">
+    <div class="round-icon">🏆</div>
+    <h1>YOU WON!</h1>
+    <p id="win-screen-sub"></p>
+    <button id="win-screen-btn">RETURN TO LOBBY</button>
+  </div>
+</div>
+
 <div id="start-screen">
   <h1>CAN'T CATCH ME</h1>
   <p>Stage 3 — Bigger Map + Buildings + Settings</p>
@@ -153,22 +193,5 @@
   <div id="leaderboard-count">Player 0/12</div>
 </div>
 
-<div id="queue-overlay"><div class="queue-card">
-<div class="queue-logo">CAN'T CATCH ME</div><div id="queue-status">WAITING FOR PLAYERS</div>
-<div id="queue-count">0 / 12 PLAYERS</div><div id="queue-timer">Minimum 6 players required</div>
-<div class="queue-note">Players can join until the countdown reaches 0.</div>
-<button id="queue-leave-btn">BACK TO MAIN MENU</button></div></div>
-<div id="round-loading-overlay"><div class="round-card"><div id="round-loading-title">ROUND LOADING</div>
-<div id="round-loading-text">Selecting the bomb holder...</div></div></div><div id="bomb-hud">
-  <div id="bomb-owner-text">BOMB: --</div>
-  <div id="bomb-time-text">30.0</div>
-</div>
-<div id="bomb-result-screen">
-  <div class="bomb-result-card">
-    <div id="bomb-result-title">YOU HAVE BEEN BLOWN UP!</div>
-    <div id="bomb-result-sub"></div>
-    <button id="bomb-return-btn">RETURN TO LOBBY</button>
-  </div>
-</div>
 </body>
 </html>

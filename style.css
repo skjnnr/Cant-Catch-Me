@@ -206,12 +206,121 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
 #room-leaderboard:not(.in-room){display:none !important;}
 #leaderboard-title,#leaderboard-names,#leaderboard-count{color:#fff !important;}
 
-#queue-overlay,#round-loading-overlay{display:none;position:fixed;inset:0;z-index:200000;background:rgba(5,9,18,.9);align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif}
-.queue-card,.round-card{width:min(520px,88vw);text-align:center;padding:34px 30px;border-radius:16px;background:rgba(13,28,62,.97);border:2px solid rgba(255,255,255,.75)}
-.queue-logo{font-size:26px;font-weight:900;margin-bottom:28px}#queue-status,#round-loading-title{font-size:30px;font-weight:900}#queue-count{font-size:22px;font-weight:800;margin-top:18px}#queue-timer{font-size:20px;margin-top:12px}.queue-note{opacity:.75;margin-top:10px}#queue-leave-btn{margin-top:26px;padding:12px 22px;font-weight:800}
+/* ================= TAG / BOMB GAME MODE ================= */
+#queue-hud{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:18px;
+  transform:translateX(-50%);
+  z-index:55;
+  min-width:260px;
+  padding:10px 22px;
+  border-radius:10px;
+  border:1px solid #344b62;
+  background:#07111ddd;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  text-align:center;
+  pointer-events:none;
+}
+#queue-hud-title{font-weight:900;font-size:16px;letter-spacing:1px;color:#38b5ff}
+#queue-hud-sub{font-size:13px;color:#b7c7d8;margin-top:2px}
 
-#bomb-hud{display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:250000;text-align:center;color:#fff;font-family:Arial,sans-serif;text-shadow:0 2px 5px #000}
-#bomb-owner-text{font-size:18px;font-weight:900}#bomb-time-text{font-size:42px;font-weight:1000}
-#bomb-result-screen{display:none;position:fixed;inset:0;z-index:300000;background:rgba(4,7,15,.94);align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif}
-.bomb-result-card{width:min(540px,88vw);padding:42px 30px;text-align:center;border:2px solid #fff;border-radius:16px;background:#10254e}
-#bomb-result-title{font-size:34px;font-weight:1000}.bomb-result-card button{margin-top:28px;padding:13px 24px;font-weight:900}
+#bomb-hud{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:18px;
+  transform:translateX(-50%);
+  z-index:55;
+  min-width:240px;
+  padding:10px 22px;
+  border-radius:10px;
+  border:2px solid #344b62;
+  background:#07111ddd;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  text-align:center;
+  align-items:center;
+  flex-direction:column;
+  pointer-events:none;
+}
+#bomb-hud-role{font-weight:900;font-size:15px;letter-spacing:.5px}
+#bomb-hud-timer{font-size:26px;font-weight:900;margin-top:2px}
+#bomb-hud.bomb-active{
+  border-color:#ff3d3d;
+  box-shadow:0 0 26px #ff3d3d88;
+  animation:bombPulse .6s infinite alternate;
+}
+#bomb-hud.bomb-active #bomb-hud-role{color:#ff5a5a}
+#bomb-hud.bomb-active #bomb-hud-timer{color:#ff5a5a}
+@keyframes bombPulse{from{box-shadow:0 0 14px #ff3d3d55}to{box-shadow:0 0 32px #ff3d3dcc}}
+
+#tag-prompt{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:calc(50% + 46px);
+  transform:translateX(-50%);
+  z-index:55;
+  padding:8px 18px;
+  border-radius:8px;
+  background:#ff3d3dee;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  font-weight:900;
+  letter-spacing:1px;
+  pointer-events:none;
+}
+
+#elim-toast{
+  position:fixed;
+  left:50%;
+  top:90px;
+  transform:translateX(-50%) translateY(-14px);
+  z-index:55;
+  padding:9px 20px;
+  border-radius:8px;
+  background:#111a24ee;
+  border:1px solid #34495e;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  font-weight:700;
+  opacity:0;
+  transition:opacity .25s,transform .25s;
+  pointer-events:none;
+}
+#elim-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+#round-screen,#kill-screen,#win-screen{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:980;
+  align-items:center;
+  justify-content:center;
+  background:rgba(3,6,10,.93);
+  color:#fff;
+  font-family:Arial,sans-serif;
+  text-align:center;
+}
+.round-box{width:min(480px,88vw)}
+.round-icon{font-size:64px;margin-bottom:6px}
+#round-role-title{font-size:clamp(28px,5vw,44px);font-weight:900;letter-spacing:2px}
+#round-role-sub{margin-top:10px;font-size:16px;color:#b7c7d8}
+#round-role-timer{margin-top:22px;font-size:52px;font-weight:900;color:#38b5ff}
+#kill-screen h1{font-size:clamp(28px,5vw,42px);letter-spacing:2px;color:#ff5a5a;margin:6px 0 0}
+#win-screen h1{font-size:clamp(28px,5vw,42px);letter-spacing:2px;color:#ffd23a;margin:6px 0 0}
+#kill-screen p,#win-screen p{color:#b7c7d8;margin:10px 0 26px}
+#kill-screen-btn,#win-screen-btn{
+  padding:14px 40px;
+  border:0;
+  border-radius:8px;
+  background:#168df0;
+  color:#fff;
+  font-size:17px;
+  font-weight:900;
+  cursor:pointer;
+}
+#kill-screen-btn:hover,#win-screen-btn:hover{transform:scale(1.05)}

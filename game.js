@@ -654,7 +654,7 @@ function platformTopAt(x, z, previousFeet, nextFeet) {
 }
 
 function updateJump(dt) {
-  if(!started || settingsOpen) {
+  if(!started || settingsOpen || isMatchMovementLocked()) {
     jumpQueued = false;
     return;
   }
@@ -693,7 +693,7 @@ function updateJump(dt) {
 }
 
 function updateMovement(dt) {
-  if(!started || settingsOpen) return;
+  if(!started || settingsOpen || isMatchMovementLocked()) return;
 
   let f=0, r=0;
   if(held("KeyW","w")) f+=1;
@@ -1006,7 +1006,6 @@ const loadingMapName=document.getElementById("loading-map-name");
 
 
 async function showMainMenu(){
-  if(typeof dbLeaveQueue==='function') await dbLeaveQueue();
   roomCodeDisplay.style.display="none";
 
   // Fully disconnect from whichever public/private room the player was in.
@@ -1088,6 +1087,7 @@ const roomCodeText=document.getElementById("room-code-text");
 async function stopCurrentLobbyChannel(){
   window.forceRoomLeaderboard?.(false);
   hideRoomLeaderboard();
+  resetMatchStateLocal();
   // Stop sending movement immediately before removing Presence/channel.
   multiplayerStarted=false;
   multiplayerLoggedIn=false;
@@ -1150,7 +1150,7 @@ async function enterSelectedLobby(mode,code=""){
   window.forceRoomLeaderboard?.(true);
   roomLeaderboard?.classList.add("in-room");
   setTimeout(()=>window.refreshRoomLeaderboard?.(),100);
-  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none");
+  lobbyChoiceScreen.style.display="none";
   privateCodeScreen.style.display="none";
   loadingScreen.style.display="flex";
   loadingMapName.textContent="LOADING "+pendingMap.toUpperCase();
@@ -1169,8 +1169,7 @@ async function enterSelectedLobby(mode,code=""){
   window.forceRoomLeaderboard?.(true);
         roomLeaderboard?.classList.add("in-room");
         window.refreshRoomLeaderboard?.();
-        if(startScreen) startScreen.style.display="none";
-      if(typeof beginBombGameplay==="function") beginBombGameplay();
+        if(startScreen) startScreen.style.display="flex";
       },180);
     }
   },55);
@@ -1185,14 +1184,14 @@ document.getElementById("join-public")?.addEventListener("click",async()=>{
   if(btn) btn.textContent=old||"JOIN PUBLIC";
 });
 document.getElementById("private-lobby-option")?.addEventListener("click",()=>{
-  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none"); privateCodeScreen.style.display="flex";
+  lobbyChoiceScreen.style.display="none"; privateCodeScreen.style.display="flex";
   document.getElementById("private-code-message").textContent="";
 });
 document.getElementById("lobby-choice-back")?.addEventListener("click",()=>{
-  lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none"); mapSelectScreen.style.display="flex";
+  lobbyChoiceScreen.style.display="none"; mapSelectScreen.style.display="flex";
 });
 document.getElementById("private-code-back")?.addEventListener("click",()=>{
-  privateCodeScreen.style.display="none"; lobbyChoiceScreen && (lobbyChoiceScreen.style.display="flex");
+  privateCodeScreen.style.display="none"; lobbyChoiceScreen.style.display="flex";
 });
 document.getElementById("create-private")?.addEventListener("click",async()=>{
   const code=makeLobbyCode();
@@ -1252,8 +1251,7 @@ document.getElementById("map-confirm")?.addEventListener("click",()=>{
       applyMap(pendingMap);
       setTimeout(()=>{
         loadingScreen.style.display="none";
-        if(startScreen) startScreen.style.display="none";
-      if(typeof beginBombGameplay==="function") beginBombGameplay();
+        if(startScreen) startScreen.style.display="flex";
       },180);
     }
   },55);
@@ -1465,25 +1463,24 @@ function remoteModel(username="Player",role="player"){
 let multiplayerStarted=false;
 let ch=null;
 
-async function startMultiplayer(){
- if(multiplayerStarted || !multiplayerLoggedIn) return true;
+function startMultiplayer(){
+ if(multiplayerStarted || !multiplayerLoggedIn) return;
  if(!window.supabase?.createClient){
    if(mpStatus)mpStatus.textContent="Supabase failed to load";
-   throw new Error("Supabase failed to load");
+   return;
  }
  multiplayerStarted=true;
  if(mpStatus)mpStatus.textContent="Connecting...";
 
  const client=authClient;
  ch=client.channel(multiplayerChannelName(),{config:{broadcast:{self:false},presence:{key:myId}}});
-
  ch.on("broadcast",{event:"state"},({payload:p})=>{
    if(!p||p.id===myId)return;
    let r=remotes.get(p.id);
    const nextName=p.username||"Player";
    const nextRole=(p.role==="owner"||p.role==="mod")?p.role:"player";
    if(!r){
-     r={m:remoteModel(nextName,nextRole),t:new THREE.Vector3(),username:nextName,role:nextRole,userId:p.userId||null};
+     r={m:remoteModel(nextName,nextRole),t:new THREE.Vector3(),username:nextName,role:nextRole};
      remotes.set(p.id,r);
    }else if(r.username!==nextName || r.role!==nextRole){
      const oldTag=r.m.children.find(o=>o.userData?.playerNameplate);
@@ -1495,103 +1492,37 @@ async function startMultiplayer(){
      r.m.add(makeNameSprite(nextName,nextRole));
      r.username=nextName;
      r.role=nextRole;
-     r.userId=p.userId||r.userId||null;
    }
-   r.userId=p.userId||r.userId||null;
    r.t.set(p.x,p.y-.47,p.z);r.yaw=p.yaw||0;
- }).on("broadcast",{event:"bomb-transfer"},({payload:p})=>{
-   if(!p || p.matchId!==dbMatchId || !p.holderId)return;
-   getLoggedInUserId().then(uid=>setNetworkBombHolder(p.holderId,uid,p.holderUsername||null));
+ }).on("broadcast",{event:"match"},({payload})=>{
+   applyIncomingMatch(payload);
+ }).on("broadcast",{event:"match-request"},()=>{
+   if(ch) try{ ch.send({type:"broadcast",event:"match",payload:matchState}); }catch(_){}
  }).on("presence",{event:"sync"},()=>{
-   if(!ch)return;
-   const state=ch.presenceState();
-   const presenceRows=Object.values(state).flat();
-   const ids=new Set(presenceRows.map(v=>v.id).filter(Boolean));
-   const presenceByNetworkId=new Map(presenceRows.filter(v=>v?.id).map(v=>[v.id,v]));
-   for(const [id,r] of remotes){
-     const presencePlayer=presenceByNetworkId.get(id);
-     if(presencePlayer?.userId)r.userId=presencePlayer.userId;
-   }
-
-   for(const [id,r] of remotes){
-     if(!ids.has(id)){scene.remove(r.m);remotes.delete(id);}
-   }
+   const state=ch.presenceState(),ids=new Set(Object.keys(state));
+   for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.m);remotes.delete(id)}
    if(mpCount)mpCount.textContent="Players: "+Math.max(1,ids.size);
    syncMenuOnlineCount();
-   window.refreshRoomLeaderboard?.();
+ }).subscribe(async st=>{
+   if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
+   if(st==="SUBSCRIBED"){
+     await ch.track({id:myId,userId:currentAuthUser?.id||null,username:currentUsername,role:currentRole,joined_at:Date.now()});
+     syncMenuOnlineCount();
+     resetMatchStateLocal();
+     try{ ch.send({type:"broadcast",event:"match-request",payload:{id:myId}}); }catch(_){}
+   }
  });
-
- await new Promise((resolve,reject)=>{
-   let settled=false;
-   const timeout=setTimeout(()=>{
-     if(settled)return;
-     settled=true;
-     multiplayerStarted=false;
-     if(mpStatus)mpStatus.textContent="Connection error";
-     reject(new Error("Multiplayer connection timed out"));
-   },10000);
-
-   ch.subscribe(async st=>{
-     if(mpStatus)mpStatus.textContent=st==="SUBSCRIBED"?"Online":st==="CHANNEL_ERROR"?"Connection error":"Connecting...";
-     if(st==="SUBSCRIBED"&&!settled){
-       try{
-         await ch.track({
-           id:myId,
-           userId:currentAuthUser?.id||null,
-           username:currentUsername,
-           role:currentRole,
-           joined_at:Date.now()
-         });
-         settled=true;
-         clearTimeout(timeout);
-         syncMenuOnlineCount();
-         resolve(true);
-       }catch(err){
-         settled=true;
-         clearTimeout(timeout);
-         multiplayerStarted=false;
-         reject(err);
-       }
-     }else if((st==="CHANNEL_ERROR"||st==="TIMED_OUT"||st==="CLOSED")&&!settled){
-       settled=true;
-       clearTimeout(timeout);
-       multiplayerStarted=false;
-       reject(new Error("Multiplayer channel "+st.toLowerCase()));
-     }
-   });
- });
-
  let lastNet=0;
- const channelForLoop=ch;
  function netLoop(t){
-   if(!multiplayerLoggedIn || ch!==channelForLoop) return;
    requestAnimationFrame(netLoop);
-
    if(!localLabel && typeof playerModel!=="undefined" && currentUsername){
      localLabel=makeNameSprite(currentUsername,currentRole);
      playerModel.add(localLabel);
    }
-
-   for(const r of remotes.values()){
-     r.m.position.lerp(r.t,.3);
-     let d=(r.yaw||0)-r.m.rotation.y;
-     d=Math.atan2(Math.sin(d),Math.cos(d));
-     r.m.rotation.y+=d*.3;
-   }
-
-   if(ch && typeof started!=="undefined" && started && t-lastNet>50){
-     lastNet=t;
-     ch.send({type:"broadcast",event:"state",payload:{
-       id:myId,
-       userId:currentAuthUser?.id||null,
-       username:currentUsername,
-       role:currentRole,
-       x:player.x,y:player.y,z:player.z,yaw:player.yaw
-     }});
-   }
+   for(const r of remotes.values()){r.m.position.lerp(r.t,.3);let d=(r.yaw||0)-r.m.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));r.m.rotation.y+=d*.3}
+   if(multiplayerLoggedIn&&ch&&typeof started!=="undefined"&&started&&t-lastNet>50){lastNet=t;ch.send({type:"broadcast",event:"state",payload:{id:myId,userId:currentAuthUser?.id||null,username:currentUsername, role:currentRole,x:player.x,y:player.y,z:player.z,yaw:player.yaw}})}
  }
  requestAnimationFrame(netLoop);
- return true;
 }
 // Multiplayer intentionally does NOT start here.
 // enterGame() starts it only after Supabase confirms an authenticated session.
@@ -1774,589 +1705,387 @@ setInterval(()=>{
   },350);
 })();
 
+// ================= TAG / BOMB GAME MODE =================
+// A round-based "hot potato" tag game layered on top of the existing
+// free-roam multiplayer room. State is kept in sync between clients using
+// the same Supabase Realtime broadcast channel ("ch") already used for
+// movement. There is no server, so authority is split like this:
+//  - The player with the lowest presence id ("host") advances the lobby
+//    queue/countdown and locks in a new match's roster.
+//  - Whoever currently holds the bomb is authoritative for tagging someone
+//    and for detonating (their own client decides and broadcasts it).
+// Every client applies the latest broadcast state it sees (highest "seq"
+// wins), so everyone converges even though nobody is a real server.
 
+const MIN_PLAYERS_TO_START = 7;      // "above 6 players"
+const QUEUE_COUNTDOWN_MS   = 30000;  // 30s queue countdown
+const ROUND_REVEAL_MS      = 5000;   // "loading screen" role reveal duration
+const BOMB_RELEASE_DELAY_MS= 5000;   // bomb holder released 5s after everyone else
+const BOMB_TIMER_MS        = 30000;  // 30s to tag someone
+const TAG_BONUS_MS         = 3000;   // +3s per tag
+const TAG_RADIUS           = 3.2;    // units
+const FINISHED_RESET_DELAY_MS = 8000; // time win/lose screens stay up before next queue
 
-// ===== QUEUE UI SAFETY BOOTSTRAP =====
-function ensureQueueUI(){
-  let q=document.getElementById("queue-overlay");
-  if(!q){
-    q=document.createElement("div");
-    q.id="queue-overlay";
-    q.innerHTML=`<div class="queue-card"><div class="queue-logo">CAN'T CATCH ME</div><div id="queue-status">WAITING FOR PLAYERS</div><div id="queue-count">0 / 12 PLAYERS</div><div id="queue-timer">Minimum 2 players required</div><div class="queue-note">Players can join until the countdown reaches 0.</div><button id="queue-leave-btn">BACK TO MAIN MENU</button></div>`;
-    document.body.appendChild(q);
+function defaultMatchState(){
+  return {
+    phase:"queue",        // "queue" | "active" | "finished"
+    seq:0,
+    updatedAt:Date.now(),
+    countdownEndsAt:null,
+    roster:[],            // [{id,username}] snapshot for this match
+    alive:[],              // ids still in the running
+    deaths:[],             // ids in elimination order
+    bombHolder:null,
+    revealEndsAt:0,
+    releasedAt:0,
+    bombEndsAt:0,
+    winnerId:null,
+    tagCount:0
+  };
+}
+
+let matchState = defaultMatchState();
+let myDeathDismissed = false;
+let myWinDismissed = false;
+let finishedResetScheduled = false;
+let lastDeathsLen = 0;
+
+function resetMatchStateLocal(){
+  matchState = defaultMatchState();
+  myDeathDismissed = false;
+  myWinDismissed = false;
+  finishedResetScheduled = false;
+  lastDeathsLen = 0;
+  hideAllMatchOverlays();
+}
+
+function hideAllMatchOverlays(){
+  ["round-screen","kill-screen","win-screen","bomb-hud","tag-prompt","queue-hud"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display="none";
+  });
+}
+
+function rosterName(id){
+  return matchState.roster.find(r=>r.id===id)?.username || "Player";
+}
+
+function applyIncomingMatch(payload){
+  if(!payload || typeof payload.seq!=="number") return;
+  if(payload.seq < matchState.seq) return; // stale, ignore
+  matchState = payload;
+  onMatchChanged();
+}
+
+function broadcastMatch(patch){
+  const next = {...matchState, ...patch, seq:(matchState.seq||0)+1, updatedAt:Date.now()};
+  matchState = next;
+  if(ch){
+    try{ ch.send({type:"broadcast",event:"match",payload:next}); }
+    catch(e){ console.warn("match broadcast failed",e); }
   }
-  let r=document.getElementById("round-loading-overlay");
-  if(!r){
-    r=document.createElement("div");
-    r.id="round-loading-overlay";
-    r.innerHTML=`<div class="round-card"><div id="round-loading-title">ROUND LOADING</div><div id="round-loading-text">Selecting the bomb holder...</div></div>`;
-    document.body.appendChild(r);
+  onMatchChanged();
+}
+
+function onMatchChanged(){
+  maybeShowEliminationToast();
+  updateQueueHud();
+  updateRoundOverlays();
+}
+
+// ---------- host-side lobby/queue logic ----------
+function computeQueueEligibleIds(){
+  if(!ch) return [];
+  try{ return Object.keys(ch.presenceState()||{}); }catch(_){ return []; }
+}
+
+function amIHost(){
+  const ids = computeQueueEligibleIds().slice().sort();
+  return ids.length>0 && ids[0]===myId;
+}
+
+function lockAndStartMatch(ids){
+  const state = ch.presenceState()||{};
+  const roster = ids.map(id=>({id, username:(state[id]?.[0]?.username)||"Player"}));
+  if(roster.length<2) return;
+  const bombHolder = roster[Math.floor(Math.random()*roster.length)].id;
+  const now=Date.now();
+  const revealEndsAt = now+ROUND_REVEAL_MS;
+  const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
+  const bombEndsAt = releasedAt+BOMB_TIMER_MS;
+  broadcastMatch({
+    phase:"active", countdownEndsAt:null,
+    roster, alive:roster.map(r=>r.id), deaths:[],
+    bombHolder, revealEndsAt, releasedAt, bombEndsAt,
+    winnerId:null, tagCount:0
+  });
+}
+
+function resetMatchToQueue(){
+  broadcastMatch({
+    phase:"queue", countdownEndsAt:null, roster:[], alive:[], deaths:[],
+    bombHolder:null, revealEndsAt:0, releasedAt:0, bombEndsAt:0, winnerId:null, tagCount:0
+  });
+}
+
+function scheduleFinishReset(){
+  if(finishedResetScheduled) return;
+  finishedResetScheduled=true;
+  setTimeout(()=>{
+    finishedResetScheduled=false;
+    if(matchState.phase==="finished") resetMatchToQueue();
+  }, FINISHED_RESET_DELAY_MS);
+}
+
+function hostTick(){
+  if(!ch || !multiplayerLoggedIn || !started) return;
+  if(!amIHost()) return;
+  const now=Date.now();
+
+  if(matchState.phase==="queue"){
+    const ids = computeQueueEligibleIds();
+    if(ids.length>=MIN_PLAYERS_TO_START){
+      if(!matchState.countdownEndsAt){
+        broadcastMatch({countdownEndsAt: now+QUEUE_COUNTDOWN_MS});
+      }else if(now>=matchState.countdownEndsAt){
+        lockAndStartMatch(ids);
+      }
+    }else if(matchState.countdownEndsAt){
+      broadcastMatch({countdownEndsAt:null});
+    }
+  }else if(matchState.phase==="finished"){
+    if(now-(matchState.updatedAt||0) > FINISHED_RESET_DELAY_MS+4000){
+      resetMatchToQueue();
+    }
+  }else if(matchState.phase==="active"){
+    // Periodic heartbeat so late joiners / reconnects converge quickly.
+    if(now-(matchState.updatedAt||0) > 4000){
+      try{ ch.send({type:"broadcast",event:"match",payload:matchState}); }catch(_){}
+    }
   }
 }
-ensureQueueUI();
 
-// ===== DATABASE PUBLIC QUEUE =====
-const queueOverlay=document.getElementById("queue-overlay"),queueStatus=document.getElementById("queue-status"),
-queueCount=document.getElementById("queue-count"),queueTimer=document.getElementById("queue-timer"),
-roundLoadingOverlay=document.getElementById("round-loading-overlay");
-let dbMatchId=null,dbMatchCode=null,queuePoll=null,queueStarting=false;
-
-async function dbFindOrCreatePublicMatch(){
- const map=String(pendingMap||"original").toLowerCase();
- const {data,error}=await authClient.from("game_matches").select("*").eq("room_type","public").eq("queue_locked",false).in("status",["waiting","countdown"]).eq("map_name",map).order("created_at",{ascending:true}).limit(20);
- if(error)throw error;
- for(const m of data||[]){const r=await authClient.rpc("get_match_player_count",{requested_match:m.id});if(!r.error&&Number(r.data)<12)return m;}
- const r=await authClient.rpc("create_public_match",{requested_map:map});if(r.error)throw r.error;return r.data;
-}
-async function dbJoinPublicQueue(){
- const m=await dbFindOrCreatePublicMatch();
- const r=await authClient.rpc("join_game_match",{requested_room_code:m.room_code,requested_username:currentUsername||"Player"});
- if(r.error)throw r.error;if(!r.data?.success)throw new Error(r.data?.error||"Join failed");
- dbMatchId=r.data.match_id;dbMatchCode=r.data.room_code;lobbyMode="public";lobbyCode=dbMatchCode;
-
- // Connect to the actual room multiplayer channel as soon as the DB assigns
- // this player a public room code.
- multiplayerLoggedIn=true;
- multiplayerStarted=false;
- await startMultiplayer();
-
- await startQueuePresence();
- await startReliableHeartbeat();
- await authClient.rpc("repair_queue_state",{requested_match:dbMatchId});
- startMatchHeartbeat();
- if(roomCodeText)roomCodeText.textContent=dbMatchCode;if(roomTypeLabel)roomTypeLabel.textContent="PUBLIC ROOM CODE";
- queueOverlay && (queueOverlay.style.display="flex");await dbRefreshQueue();queuePoll=setInterval(dbRefreshQueue,500);
-}
-async function dbRefreshQueue(){
- if(!dbMatchId)return;
- reliableHeartbeat();
- // Repairs expired/cancelled countdowns after players leave/rejoin.
- authClient.rpc("repair_queue_state",{requested_match:dbMatchId})
-   .then(({error})=>{if(error)console.warn("Queue repair:",error);});
- const mr=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
- const pr=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
- if(mr.error||pr.error)return;let m=mr.data,players=pr.data||[];
- await presenceQueueRefresh();
- const n=queuePresenceChannel ? queuePresenceCount : players.length;
- queueCount.textContent=n+" / 12 PLAYERS";
-
- // Presence is authoritative for queue occupancy.
- // Never display an expired/stale countdown when fewer than the minimum are connected.
- const minimum=Number(m.min_players||2);
- if(queuePresenceChannel && n < minimum){
-   queueStatus.textContent="WAITING FOR PLAYERS";
-   queueTimer.textContent="Minimum "+minimum+" players required";
-
-   // Wait for the DB repair before continuing so stale `countdown` state
-   // cannot overwrite the waiting UI later in this same refresh.
-   const reset=await authClient.rpc("force_queue_state_from_presence",{
-     requested_match:dbMatchId,
-     connected_players:n
-   });
-   if(reset.error) console.warn("Presence reset:",reset.error);
-
-   // Refresh authoritative match state after repair.
-   const fresh=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
-   if(!fresh.error) m=fresh.data;
- }
- else if(queuePresenceChannel && n >= minimum && m.status==="waiting"){
-   const start=await authClient.rpc("force_queue_state_from_presence",{
-     requested_match:dbMatchId,
-     connected_players:n
-   });
-   if(start.error) console.warn("Presence countdown start:",start.error);
-   const fresh=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
-   if(!fresh.error) m=fresh.data;
- }
- if(m.status==="waiting"){
-  queueStatus.textContent="WAITING FOR PLAYERS";
-  queueTimer.textContent="Minimum "+(m.min_players||2)+" players required";
-  if(n>=Number(m.min_players||2)) ensureQueueCountdownStarted(m,n);
-}
- if(m.status==="countdown" && n>=Number(m.min_players||2)){const left=Math.max(0,Math.ceil((new Date(m.queue_locks_at)-Date.now())/1000));queueStatus.textContent="MATCH STARTING";queueTimer.textContent=left+" SECONDS";if(left<=0){
-  queueTimer.textContent="STARTING...";
-  authClient.rpc("advance_queue_presence_at_zero",{requested_match:dbMatchId,connected_players:queuePresenceCount})
-    .then(({error})=>{if(error)console.warn("Queue advance:",error);});
-}}
- if(m.status==="loading"&&!queueStarting){queueStarting=true;clearInterval(queuePoll);queuePoll=null;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="flex");startRoundStartWatchdog();document.getElementById("round-loading-text").textContent="Queue locked — selecting the player who starts with the bomb...";setTimeout(async()=>{
-  try{
-    const {data,error}=await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});
-    if(error) throw error;
-    console.log("Round start:",data);
-  }catch(e){
-    console.error("Round start failed:",e);
-    const msg=document.getElementById("round-loading-text");
-    if(msg)msg.textContent="Starting round...";
+// ---------- bomb holder authority: tagging + detonation ----------
+function nearestTaggableDistance(){
+  let best=Infinity;
+  for(const id of matchState.alive){
+    if(id===myId) continue;
+    const r=remotes.get(id);
+    if(!r) continue;
+    const d=Math.hypot(r.m.position.x-player.x, r.m.position.z-player.z);
+    if(d<best) best=d;
   }
-},700);}
- if(m.status==="active"){
- queueOverlay && (queueOverlay.style.display="none");
- if(queuePoll){clearInterval(queuePoll);queuePoll=null;}
- roomCodeDisplay.style.display="block";
- window.forceRoomLeaderboard?.(true);
- if(startScreen)startScreen.style.display="none";
- await beginBombGameplay();
-}
-}
-async function dbLeaveQueue(){
- if(typeof stopQueuePresence==="function") await stopQueuePresence();
- await stopCurrentLobbyChannel();
- if(typeof stopReliableHeartbeat==="function") stopReliableHeartbeat();
- stopMatchHeartbeat();
- if(typeof bombLoop!=="undefined"&&bombLoop){clearInterval(bombLoop);bombLoop=null;}
- if(typeof bombHud!=="undefined"&&bombHud)bombHud.style.display="none";
- if(typeof bombResultScreen!=="undefined"&&bombResultScreen)bombResultScreen.style.display="none";if(queuePoll){clearInterval(queuePoll);queuePoll=null;}if(dbMatchId)try{await authClient.rpc("leave_game_match",{requested_match:dbMatchId});}catch(_){}dbMatchId=null;dbMatchCode=null;queueStarting=false;queueOverlay && (queueOverlay.style.display="none");roundLoadingOverlay && (roundLoadingOverlay.style.display="none");}
-document.getElementById("queue-leave-btn")?.addEventListener("click",async()=>{await dbLeaveQueue();await showMainMenu();});
-
-(function(){
- const old=document.getElementById("join-public");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
- btn.addEventListener("click",async()=>{const t=btn.textContent;btn.disabled=true;btn.textContent="JOINING QUEUE...";try{lobbyChoiceScreen && (lobbyChoiceScreen.style.display="none");await stopCurrentLobbyChannel();multiplayerLoggedIn=true;await dbJoinPublicQueue();}catch(e){console.error(e);lobbyChoiceScreen && (lobbyChoiceScreen.style.display="flex");alert("Could not join public queue: "+(e.message||e));}finally{btn.disabled=false;btn.textContent=t;}});
-})();
-
-
-// ===== BOMB / TAG / ELIMINATION GAMEPLAY V1 =====
-const bombHud=document.getElementById("bomb-hud"),bombOwnerText=document.getElementById("bomb-owner-text"),
-bombTimeText=document.getElementById("bomb-time-text"),bombResultScreen=document.getElementById("bomb-result-screen"),
-bombResultTitle=document.getElementById("bomb-result-title"),bombResultSub=document.getElementById("bomb-result-sub");
-let bombLoop=null,bombDetonationRequested=false,lastBombHolder=null,headStartUntil=0,roundSeen=0;
-
-async function fetchMatchState(){
- if(!dbMatchId)return null;
- const r=await authClient.from("game_matches").select("*").eq("id",dbMatchId).single();
- return r.error?null:r.data;
-}
-async function fetchMatchPlayers(){
- if(!dbMatchId)return [];
- const r=await authClient.from("match_players").select("*").eq("match_id",dbMatchId).order("joined_at");
- return r.data||[];
-}
-async function beginBombGameplay(){
- if(bombLoop)clearInterval(bombLoop);
- bombDetonationRequested=false;
- bombHud.style.display="block";
- bombLoop=setInterval(syncBombGameplay,100);
- await syncBombGameplay();
-}
-async function syncBombGameplay(){
- const m=await fetchMatchState();if(!m)return;
- const players=await fetchMatchPlayers();
- const {data:{session}}=await authClient.auth.getSession();
- const localUserId=session?.user?.id||null;
- const holder=players.find(p=>p.user_id===m.bomb_holder);
- bombOwnerText.textContent="BOMB: "+(holder?.username||"Selecting...");
- setNetworkBombHolder(m.bomb_holder,localUserId,holder?.username||null);
-
- if(m.round_number!==roundSeen){
-   roundSeen=m.round_number;
-   lastBombHolder=m.bomb_holder;
-   // start_bomb_round SQL schedules explosion 35 seconds away:
-   // first 5 seconds are the runners' head start.
-   headStartUntil=Date.now()+5000;
-   roundLoadingOverlay.style.display="flex";
-   const meHas=m.bomb_holder===localUserId;
-   document.getElementById("round-loading-title").textContent="ROUND "+m.round_number;
-   document.getElementById("round-loading-text").textContent=meHas
-      ?"YOU START WITH THE BOMB — WAIT 5 SECONDS!"
-      :((holder?.username||"A PLAYER")+" STARTS WITH THE BOMB — RUN!");
-   setTimeout(()=>roundLoadingOverlay.style.display="none",1800);
- }
-
- if(m.status==="active"&&m.bomb_explodes_at){
-   const left=Math.max(0,(new Date(m.bomb_explodes_at).getTime()-Date.now())/1000);
-   bombTimeText.textContent=left.toFixed(1);
-   if(left<=0.05&&!bombDetonationRequested){
-     bombDetonationRequested=true;
-     const r=await authClient.rpc("detonate_bomb_safe",{requested_match:dbMatchId});
-     setTimeout(()=>{bombDetonationRequested=false;syncBombGameplay();},400);
-   }
-   // Attempt tag only if this client is the authoritative current holder.
-   const myUid=localUserId;
-   if(myUid&&m.bomb_holder===myUid&&Date.now()>=headStartUntil) attemptBombTag(players);
- } else if(m.status==="between_rounds"){
-   bombHud.style.display="none";
-   const me=players.find(p=>p.user_id===localUserId);
-   if(me?.eliminated){showBombResult(false);}
-   else if(!queueStarting){
-     queueStarting=true;
-     roundLoadingOverlay.style.display="flex";
-     document.getElementById("round-loading-title").textContent="NEXT ROUND";
-     document.getElementById("round-loading-text").textContent="Selecting a new bomb holder...";
-     setTimeout(async()=>{await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});queueStarting=false;},1800);
-   }
- } else if(m.status==="finished"){
-   bombHud.style.display="none";
-   showBombResult(m.winner_id===localUserId);
- }
+  return best;
 }
 
-let tagCooldownUntil=0;
-async function attemptBombTag(players){
- if(Date.now()<tagCooldownUntil)return;
- const {data:{session}}=await authClient.auth.getSession();
- const localUserId=session?.user?.id||null;
- if(!localUserId)return;
+function attemptTag(){
+  if(matchState.phase!=="active") return;
+  if(matchState.bombHolder!==myId) return;
+  if(matchState.deaths.includes(myId)) return;
+  const now=Date.now();
+  if(now<matchState.releasedAt) return;
 
- // The bomb holder automatically tags an alive player by touching them.
- for(const [,r] of remotes){
-   const target=players.find(p=>
-     (r.userId && p.user_id===r.userId) ||
-     ((!r.userId) && (p.username||"").toLowerCase()===(r.username||"").toLowerCase())
-   );
-   const targetUserId=target?.user_id||null;
-   if(!targetUserId || targetUserId===localUserId || !r.m)continue;
-   if(!target || target.eliminated || target.alive===false)continue;
+  let bestId=null,bestDist=TAG_RADIUS;
+  for(const id of matchState.alive){
+    if(id===myId) continue;
+    const r=remotes.get(id);
+    if(!r) continue;
+    const d=Math.hypot(r.m.position.x-player.x, r.m.position.z-player.z);
+    if(d<bestDist){bestDist=d;bestId=id;}
+  }
+  if(!bestId) return;
 
-   const dx=player.x-r.m.position.x;
-   const dz=player.z-r.m.position.z;
-   if(Math.hypot(dx,dz)<=1.8){
-     tagCooldownUntil=Date.now()+900;
-     const {data,error}=await authClient.rpc("tag_player_safe",{
-       requested_match:dbMatchId,
-       tagged_player:targetUserId
-     });
-     if(error)console.warn("Tag rejected:",error);
-     else{
-       console.log("Bomb transferred:",data);
-       const targetName=target?.username||r.username||null;
-       setNetworkBombHolder(targetUserId,localUserId,targetName);
-       if(ch && multiplayerStarted){
-         ch.send({type:"broadcast",event:"bomb-transfer",payload:{
-           matchId:dbMatchId,
-           holderId:targetUserId,
-           holderUsername:targetName
-         }}).catch(()=>{});
-       }
-     }
-     return;
-   }
- }
+  const remaining=Math.max(0, matchState.bombEndsAt-now);
+  showElimToast("💣 You tagged "+rosterName(bestId)+"!");
+  broadcastMatch({bombHolder:bestId, bombEndsAt: now+remaining+TAG_BONUS_MS, tagCount:(matchState.tagCount||0)+1});
 }
-function showBombResult(won){
- if(bombLoop){clearInterval(bombLoop);bombLoop=null;}
- setNetworkBombHolder(null,networkBombLocalUserId);
- bombCircle.visible=false;
- bombResultScreen.style.display="flex";
- bombResultTitle.textContent=won?"YOU WON!":"YOU HAVE BEEN BLOWN UP!";
- bombResultSub.textContent=won?"You are the last player remaining.":"You were eliminated from this match.";
+
+function detonateSelf(){
+  if(matchState.bombHolder!==myId) return;
+  if(matchState.deaths.includes(myId)) return;
+
+  const now=Date.now();
+  const newAlive = matchState.alive.filter(id=>id!==myId);
+  const newDeaths = [...matchState.deaths, myId];
+
+  if(newAlive.length<=1){
+    broadcastMatch({phase:"finished", alive:newAlive, deaths:newDeaths, winnerId:newAlive[0]||null, bombHolder:null});
+    scheduleFinishReset();
+  }else{
+    const nextHolder = newAlive[Math.floor(Math.random()*newAlive.length)];
+    const revealEndsAt = now+ROUND_REVEAL_MS;
+    const releasedAt = revealEndsAt+BOMB_RELEASE_DELAY_MS;
+    const bombEndsAt = releasedAt+BOMB_TIMER_MS;
+    broadcastMatch({alive:newAlive, deaths:newDeaths, bombHolder:nextHolder, revealEndsAt, releasedAt, bombEndsAt});
+  }
 }
-document.getElementById("bomb-return-btn")?.addEventListener("click",async()=>{
- bombResultScreen.style.display="none";
- bombHud.style.display="none";
- await dbLeaveQueue();
- await showMainMenu();
+
+window.addEventListener("keydown", e=>{
+  if(formFieldHasFocus()) return;
+  if(e.code==="KeyE" && !e.repeat) attemptTag();
 });
 
+// ---------- movement gating ----------
+function isMatchMovementLocked(){
+  const inMatch = matchState.roster.some(r=>r.id===myId);
+  if(!inMatch) return false;
 
-async function ensureQueueCountdownStarted(match, playerCount){
-  if(!match || match.status!=="waiting") return;
-  const min=Number(match.min_players||2);
-  if(playerCount < min) return;
+  const amDead = matchState.deaths.includes(myId);
+  if(amDead) return !myDeathDismissed;
 
-  // Atomically transition waiting -> countdown. RLS blocks direct update,
-  // so use the dedicated RPC installed by START-QUEUE-COUNTDOWN-FIX.sql.
-  const r=await authClient.rpc("start_queue_countdown_if_ready",{requested_match:dbMatchId});
-  if(r.error) console.warn("Countdown start RPC:",r.error);
+  if(matchState.phase!=="active") return false;
+  const now=Date.now();
+  if(now<matchState.revealEndsAt) return true;
+  if(matchState.bombHolder===myId && now<matchState.releasedAt) return true;
+  return false;
 }
 
-
-// ===== SUPABASE QUEUE DISCONNECT / HEARTBEAT =====
-let matchHeartbeatTimer=null;
-let disconnectCleanupTimer=null;
-
-async function sendMatchHeartbeat(){
-  if(!dbMatchId || false) return;
-  try{
-    await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
-  }catch(e){ console.warn("Match heartbeat:",e); }
+// ---------- UI ----------
+function showElimToast(text){
+  const el=document.getElementById("elim-toast");
+  if(!el) return;
+  el.textContent=text;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove("show"),2600);
 }
 
-function startMatchHeartbeat(){
-  stopMatchHeartbeat();
-  sendMatchHeartbeat();
-  matchHeartbeatTimer=setInterval(sendMatchHeartbeat,5000);
-
-  // Any connected player may request stale-player cleanup.
-  disconnectCleanupTimer=setInterval(async()=>{
-    if(!dbMatchId)return;
-    try{
-      await authClient.rpc("cleanup_disconnected_match_players",{requested_match:dbMatchId});
-    }catch(e){ console.warn("Disconnect cleanup:",e); }
-  },5000);
-}
-
-function stopMatchHeartbeat(){
-  if(matchHeartbeatTimer){clearInterval(matchHeartbeatTimer);matchHeartbeatTimer=null;}
-  if(disconnectCleanupTimer){clearInterval(disconnectCleanupTimer);disconnectCleanupTimer=null;}
-}
-
-async function leaveDatabaseMatchNow(){
-  stopMatchHeartbeat();
-  if(!dbMatchId)return;
-  try{
-    await authClient.rpc("leave_game_match",{requested_match:dbMatchId});
-  }catch(e){console.warn("Leave match:",e);}
-}
-
-// Best-effort normal browser exits. The heartbeat cleanup is the reliable fallback
-// when a Chromebook/tab closes before this request completes.
-window.addEventListener("pagehide",()=>{ leaveDatabaseMatchNow(); });
-window.addEventListener("beforeunload",()=>{ leaveDatabaseMatchNow(); });
-
-
-// ===== RELIABLE SUPABASE MATCH HEARTBEAT V2 =====
-let reliableHeartbeatTimer=null;
-let reliableCleanupTimer=null;
-
-async function reliableHeartbeat(){
-  if(!dbMatchId || false) return false;
-  const {data,error}=await authClient.rpc("heartbeat_game_match",{requested_match:dbMatchId});
-  if(error){console.warn("Heartbeat failed:",error);return false;}
-  return data===true;
-}
-
-async function startReliableHeartbeat(){
-  stopReliableHeartbeat();
-  // Do not wait for the first interval tick.
-  await reliableHeartbeat();
-  reliableHeartbeatTimer=setInterval(reliableHeartbeat,3000);
-  reliableCleanupTimer=setInterval(async()=>{
-    if(!dbMatchId)return;
-    const {error}=await authClient.rpc("cleanup_disconnected_match_players",{requested_match:dbMatchId});
-    if(error)console.warn("Cleanup failed:",error);
-  },5000);
-}
-
-function stopReliableHeartbeat(){
-  if(reliableHeartbeatTimer){clearInterval(reliableHeartbeatTimer);reliableHeartbeatTimer=null;}
-  if(reliableCleanupTimer){clearInterval(reliableCleanupTimer);reliableCleanupTimer=null;}
-}
-
-
-// ===== SUPABASE REALTIME PRESENCE QUEUE V1 =====
-// Presence is the source of truth for who is actually connected to the queue.
-let queuePresenceChannel=null;
-let queuePresenceCount=0;
-let queuePresenceUsers=[];
-
-function flattenQueuePresence(state){
-  const rows=[];
-  for(const key of Object.keys(state||{})){
-    for(const p of (state[key]||[])){
-      if(p && p.user_id) rows.push(p);
-    }
+function maybeShowEliminationToast(){
+  if(matchState.deaths.length>lastDeathsLen){
+    const newDead=matchState.deaths[matchState.deaths.length-1];
+    if(newDead!==myId) showElimToast("💥 "+rosterName(newDead)+" was blown up!");
   }
-  const unique=new Map();
-  for(const p of rows) unique.set(p.user_id,p);
-  return [...unique.values()];
+  lastDeathsLen=matchState.deaths.length;
 }
 
-async function stopQueuePresence(){
-  if(!queuePresenceChannel)return;
-  try{await queuePresenceChannel.untrack();}catch(_){}
-  try{await authClient.removeChannel(queuePresenceChannel);}catch(_){}
-  queuePresenceChannel=null;
-  queuePresenceCount=0;
-  queuePresenceUsers=[];
-}
-
-async function startQueuePresence(){
-  await stopQueuePresence();
-  if(!dbMatchId)return;
-
-  const sessionResult=await authClient.auth.getSession();
-  const queueUser=sessionResult?.data?.session?.user;
-  if(!queueUser?.id) throw new Error("No logged-in Supabase session found");
-
-  queuePresenceChannel=authClient.channel("queue-presence:"+dbMatchId,{
-    config:{presence:{key:queueUser.id}}
-  });
-
-  queuePresenceChannel.on("presence",{event:"sync"},async()=>{
-    if(!queuePresenceChannel)return;
-    queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
-    queuePresenceCount=queuePresenceUsers.length;
-
-    const ids=queuePresenceUsers.map(x=>x.user_id);
-    const {error}=await authClient.rpc("sync_queue_from_presence",{
-      requested_match:dbMatchId,
-      active_user_ids:ids
-    });
-    if(error)console.warn("Presence queue sync:",error);
-
-    const r=await authClient.rpc("update_queue_from_presence",{
-      requested_match:dbMatchId,
-      connected_players:queuePresenceCount
-    });
-    if(r.error)console.warn("Presence queue state:",r.error);
-  });
-
-  await new Promise((resolve,reject)=>{
-    let settled=false;
-    queuePresenceChannel.subscribe(async status=>{
-      if(status==="SUBSCRIBED"&&!settled){
-        settled=true;
-        const {error}=await queuePresenceChannel.track({
-          user_id:queueUser.id,
-          username:currentUsername||"Player",
-          online_at:new Date().toISOString()
-        });
-        if(error)reject(error); else resolve();
-      } else if((status==="CHANNEL_ERROR"||status==="TIMED_OUT")&&!settled){
-        settled=true;
-        reject(new Error("Queue Presence connection failed"));
-      }
-    });
-  });
-}
-
-async function presenceQueueRefresh(){
-  if(!dbMatchId)return;
-  if(queuePresenceChannel){
-    queuePresenceUsers=flattenQueuePresence(queuePresenceChannel.presenceState());
-    queuePresenceCount=queuePresenceUsers.length;
+function updateQueueHud(){
+  const hud=document.getElementById("queue-hud");
+  if(!hud) return;
+  if(!started || !multiplayerLoggedIn || matchState.phase!=="queue"){
+    hud.style.display="none";
+    return;
   }
-}
-
-
-async function getLoggedInUserId(){
-  const {data:{session}}=await authClient.auth.getSession();
-  return session?.user?.id||null;
-}
-
-
-let roundStartWatchdog=null;
-function startRoundStartWatchdog(){
-  if(roundStartWatchdog)clearInterval(roundStartWatchdog);
-  roundStartWatchdog=setInterval(async()=>{
-    if(!dbMatchId)return;
-    const {data:m}=await authClient.from("game_matches")
-      .select("status").eq("id",dbMatchId).single();
-    if(m?.status==="loading"){
-      const {error}=await authClient.rpc("start_bomb_round_safe",{requested_match:dbMatchId});
-      if(error)console.warn("Round-start watchdog:",error);
-    }else if(m?.status==="active"||m?.status==="finished"){
-      clearInterval(roundStartWatchdog);roundStartWatchdog=null;
-    }
-  },1000);
-}
-
-// ===== AUTHORITATIVE ACTIVE MATCH WATCHER =====
-let activeMatchWatcher=null, activeRoundEntered=-1;
-async function watchActiveMatch(){
-  if(!dbMatchId)return;
-  const {data:m,error}=await authClient.from("game_matches")
-    .select("status,round_number,bomb_holder,bomb_explodes_at")
-    .eq("id",dbMatchId).single();
-  if(error)return console.warn("Active watcher:",error);
-  if(m.status==="active" && m.bomb_holder){
-    // The match row is authoritative. Drive the bomb visual directly from it,
-    // even before/independent of the bomb gameplay polling loop.
-    const watcherUid=await getLoggedInUserId();
-    setNetworkBombHolder(m.bomb_holder,watcherUid);
-    // Enter actual playable state. Do NOT clear keys on every 500ms poll.
-    // That was interrupting held WASD keys and causing glitchy movement.
-    started=true;
-    settingsOpen=false;
-    if(settingsEl)settingsEl.style.display="none";
-    if(typeof paused!=="undefined")paused=false;
-
-    if(queueOverlay)queueOverlay.style.display="none";
-    if(roundLoadingOverlay)roundLoadingOverlay.style.display="none";
-    ["queue-overlay","round-loading-overlay","loading-screen"].forEach(id=>{
-      const el=document.getElementById(id);if(el)el.style.display="none";
-    });
-    if(startScreen)startScreen.style.display="none";
-    if(activeRoundEntered!==Number(m.round_number)){
-      activeRoundEntered=Number(m.round_number);
-      keys.clear();
-      try{
-        await beginBombGameplay();
-        // Browsers require a user gesture for pointer lock, so movement works
-        // immediately and a canvas click restores mouse-look.
-        const clickHint=document.getElementById("game-control-hint")||document.createElement("div");
-        clickHint.id="game-control-hint";
-        clickHint.textContent="WASD TO MOVE • CLICK GAME FOR MOUSE LOOK";
-        clickHint.style.cssText="position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9000;color:white;background:rgba(0,0,0,.55);padding:9px 14px;border-radius:8px;font:700 13px Arial;pointer-events:none";
-        if(!clickHint.parentNode)document.body.appendChild(clickHint);
-        setTimeout(()=>clickHint.remove(),4500);
-      }catch(e){console.error("Bomb gameplay start:",e);}
-    }
-  }
-}
-activeMatchWatcher=setInterval(watchActiveMatch,500);
-watchActiveMatch();
-
-
-// ===== NETWORKED BOMB HOLDER INDICATOR =====
-// One red circle. game_matches.bomb_holder is authoritative.
-// Realtime Broadcast makes transfers appear immediately; DB polling remains the fallback.
-let networkBombHolderId=null;
-let networkBombLocalUserId=null;
-let networkBombHolderUsername=null;
-
-const bombCircle=new THREE.Mesh(
-  new THREE.RingGeometry(1.22,1.55,72),
-  new THREE.MeshBasicMaterial({
-    color:0xff1616,
-    side:THREE.DoubleSide,
-    transparent:true,
-    opacity:1,
-    depthTest:false,
-    depthWrite:false
-  })
-);
-bombCircle.rotation.x=-Math.PI/2;
-bombCircle.renderOrder=100000;
-bombCircle.frustumCulled=false;
-bombCircle.visible=false;
-scene.add(bombCircle);
-
-function setNetworkBombHolder(holderId,localId,holderUsername=null){
-  networkBombHolderId=holderId||null;
-  networkBombLocalUserId=localId||networkBombLocalUserId||null;
-  if(holderUsername)networkBombHolderUsername=holderUsername;
-  if(!holderId){
-    networkBombHolderUsername=null;
-    bombCircle.visible=false;
-  }
-}
-
-function updateBombHolderRing(holderId,localId){
-  setNetworkBombHolder(holderId,localId);
-}
-
-function findBombRemote(){
-  if(!networkBombHolderId)return null;
-  // Best path: authenticated Supabase UUID carried in room Presence/state.
-  for(const [,r] of remotes){
-    if(r.userId===networkBombHolderId)return r;
-  }
-  // Fallback: match the authoritative match_players username.
-  if(networkBombHolderUsername){
-    for(const [,r] of remotes){
-      if((r.username||"").toLowerCase()===networkBombHolderUsername.toLowerCase())return r;
-    }
-  }
-  return null;
-}
-
-function animateNetworkBombCircle(){
-  let shown=false;
-
-  if(networkBombHolderId && networkBombHolderId===networkBombLocalUserId){
-    // player.y is eye height; ground is ~1.7 below it.
-    bombCircle.position.set(player.x,player.y-1.61,player.z);
-    shown=true;
+  const count=Math.max(1, computeQueueEligibleIds().length);
+  hud.style.display="flex";
+  const title=document.getElementById("queue-hud-title");
+  const sub=document.getElementById("queue-hud-sub");
+  if(count<MIN_PLAYERS_TO_START){
+    title.textContent="WAITING FOR PLAYERS";
+    sub.textContent=count+" / "+MIN_PLAYERS_TO_START+" needed to start";
+  }else if(matchState.countdownEndsAt){
+    const s=Math.max(0,Math.ceil((matchState.countdownEndsAt-Date.now())/1000));
+    title.textContent="MATCH STARTING IN "+s+"s";
+    sub.textContent=count+" players queued — join public still works";
   }else{
-    const r=findBombRemote();
-    if(r?.m){
-      // Remote model origin is at eye-ish height too.
-      bombCircle.position.set(r.m.position.x,r.m.position.y-1.14,r.m.position.z);
-      shown=true;
-    }
+    title.textContent="READY TO START";
+    sub.textContent=count+" players queued";
+  }
+}
+
+function renderRoundReveal(now){
+  const iAmHolder = matchState.bombHolder===myId;
+  document.getElementById("round-role-title").textContent = iAmHolder ? "💣 YOU HAVE THE BOMB" : "🏃 GET READY TO RUN";
+  document.getElementById("round-role-sub").textContent = iAmHolder
+    ? "Everyone else is about to run. Chase them down and tag someone!"
+    : ("Don't get tagged! "+rosterName(matchState.bombHolder)+" has the bomb.");
+  const s=Math.max(0,Math.ceil((matchState.revealEndsAt-now)/1000));
+  document.getElementById("round-role-timer").textContent = s>0 ? String(s) : "GO!";
+}
+
+function renderRoundReleaseWait(now){
+  document.getElementById("round-role-title").textContent="💣 YOU HAVE THE BOMB";
+  document.getElementById("round-role-sub").textContent="Everyone else is already running. You'll be released in:";
+  const s=Math.max(0,Math.ceil((matchState.releasedAt-now)/1000));
+  document.getElementById("round-role-timer").textContent=s+"s";
+}
+
+function updateRoundOverlays(){
+  const now=Date.now();
+  const roundScreen=document.getElementById("round-screen");
+  const killScreen=document.getElementById("kill-screen");
+  const winScreen=document.getElementById("win-screen");
+  const bombHud=document.getElementById("bomb-hud");
+  const tagPrompt=document.getElementById("tag-prompt");
+  if(!roundScreen||!killScreen||!winScreen||!bombHud||!tagPrompt) return;
+
+  const inMatch = matchState.roster.some(r=>r.id===myId);
+  const amDead = matchState.deaths.includes(myId);
+  if(!amDead) myDeathDismissed=false;
+  const isWinner = matchState.phase==="finished" && matchState.winnerId===myId;
+  if(!isWinner) myWinDismissed=false;
+
+  let showRound=false, showKill=false, showWin=false;
+
+  if(inMatch && !amDead && matchState.phase==="active" && now<matchState.revealEndsAt){
+    showRound=true; renderRoundReveal(now);
+  }else if(inMatch && !amDead && matchState.phase==="active" && matchState.bombHolder===myId && now>=matchState.revealEndsAt && now<matchState.releasedAt){
+    showRound=true; renderRoundReleaseWait(now);
   }
 
-  bombCircle.visible=shown;
-  requestAnimationFrame(animateNetworkBombCircle);
+  if(amDead && !myDeathDismissed && !isWinner) showKill=true;
+  if(isWinner && !myWinDismissed) showWin=true;
+
+  roundScreen.style.display = showRound ? "flex" : "none";
+  killScreen.style.display = showKill ? "flex" : "none";
+  winScreen.style.display = showWin ? "flex" : "none";
+
+  if(showRound||showKill||showWin) document.exitPointerLock?.();
+
+  if(showKill){
+    const isFinalLoser = matchState.phase==="finished";
+    document.getElementById("kill-screen-sub").textContent = isFinalLoser
+      ? (rosterName(matchState.winnerId)+" survived. Better luck next time.")
+      : "Better luck in the next round.";
+    const btn=document.getElementById("kill-screen-btn");
+    btn.textContent = isFinalLoser ? "RETURN TO MAIN MENU" : "RETURN TO LOBBY";
+    btn.onclick=()=>{
+      myDeathDismissed=true;
+      updateRoundOverlays();
+      if(isFinalLoser){ showMainMenu(); }
+      else{ requestMouse(); }
+    };
+  }
+
+  if(showWin){
+    document.getElementById("win-screen-sub").textContent="You're the last one standing!";
+    document.getElementById("win-screen-btn").onclick=()=>{
+      myWinDismissed=true;
+      updateRoundOverlays();
+      requestMouse();
+    };
+  }
+
+  // Bomb HUD + tag prompt only while actively, freely playing.
+  const playing = inMatch && !amDead && matchState.phase==="active" && now>=matchState.revealEndsAt &&
+    (matchState.bombHolder!==myId || now>=matchState.releasedAt);
+
+  bombHud.style.display = playing ? "flex" : "none";
+  if(playing){
+    const remainSec = Math.max(0, Math.ceil((matchState.bombEndsAt-now)/1000));
+    const roleEl=document.getElementById("bomb-hud-role");
+    if(matchState.bombHolder===myId){
+      roleEl.textContent="💣 YOU HAVE THE BOMB";
+      bombHud.classList.add("bomb-active");
+    }else{
+      roleEl.textContent="🏃 RUN — "+rosterName(matchState.bombHolder)+" has the bomb";
+      bombHud.classList.remove("bomb-active");
+    }
+    document.getElementById("bomb-hud-timer").textContent=remainSec+"s";
+  }
+
+  let canTag=false;
+  if(playing && matchState.bombHolder===myId) canTag = nearestTaggableDistance()<=TAG_RADIUS;
+  tagPrompt.style.display = canTag ? "block" : "none";
 }
-requestAnimationFrame(animateNetworkBombCircle);
+
+// ---------- timers ----------
+setInterval(()=>{ if(started) updateRoundOverlays(); }, 250);
+setInterval(()=>{ if(started) updateQueueHud(); }, 500);
+setInterval(hostTick, 900);
+setInterval(()=>{
+  if(!started) return;
+  if(matchState.phase==="active" && matchState.bombHolder===myId && !matchState.deaths.includes(myId)){
+    const now=Date.now();
+    if(now>=matchState.releasedAt && now>=matchState.bombEndsAt) detonateSelf();
+  }
+}, 300);
