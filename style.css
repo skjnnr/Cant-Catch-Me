@@ -324,3 +324,16 @@ linear-gradient(0deg,transparent 74%,#e89b3130 75%,transparent 76%)}
   cursor:pointer;
 }
 #kill-screen-btn:hover,#win-screen-btn:hover{transform:scale(1.05)}
+.secondary-btn{
+  display:block;
+  margin:14px auto 0;
+  padding:10px 28px;
+  border:1px solid #445266;
+  border-radius:8px;
+  background:transparent;
+  color:#9fb0c4;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+}
+.secondary-btn:hover{color:#fff;border-color:#7d8fa6}

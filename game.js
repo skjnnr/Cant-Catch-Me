@@ -1567,7 +1567,9 @@ function startMultiplayer(){
  }).on("broadcast",{event:"match"},({payload})=>{
    applyIncomingMatch(payload);
  }).on("broadcast",{event:"match-request"},()=>{
-   if(ch) try{ ch.send({type:"broadcast",event:"match",payload:matchState}); }catch(_){}
+   // Must carry a freshly-stamped updatedAt, same as the heartbeat — reusing the old
+   // one corrupts the requester's synced clock the moment they join.
+   if(ch) try{ ch.send({type:"broadcast",event:"match",payload:{...matchState, updatedAt:Date.now()}}); }catch(_){}
  }).on("presence",{event:"sync"},()=>{
    const state=ch.presenceState(),ids=new Set(Object.keys(state));
    for(const [id,r] of remotes)if(!ids.has(id)){scene.remove(r.m);remotes.delete(id)}
@@ -1788,7 +1790,7 @@ setInterval(()=>{
 // wins), so everyone converges even though nobody is a real server.
 
 const MIN_PLAYERS_TO_START = 2;      // minimum players to start a match
-const TAGBOMB_BUILD_ID = "tagbomb-sync-fix-4"; // bump this every time this section changes
+const TAGBOMB_BUILD_ID = "tagbomb-sync-fix-5"; // bump this every time this section changes
 console.log("[CantCatchMe] tag/bomb build:", TAGBOMB_BUILD_ID);
 {
   const badge=document.createElement("div");
@@ -2231,28 +2233,46 @@ function updateRoundOverlays(){
   if(showRound||showKill||showWin) document.exitPointerLock?.();
 
   if(showKill){
-    const isFinalLoser = !!myPendingOverlay.final;
+    const overlay = myPendingOverlay;
+    const isFinalLoser = !!overlay.final;
     document.getElementById("kill-screen-sub").textContent = isFinalLoser
-      ? (myPendingOverlay.winnerName+" survived. Better luck next time.")
+      ? (overlay.winnerName+" survived. Better luck next time.")
       : "Better luck in the next round.";
     const btn=document.getElementById("kill-screen-btn");
+    const menuBtn=document.getElementById("kill-screen-menu-btn");
     btn.textContent = isFinalLoser ? "RETURN TO MAIN MENU" : "RETURN TO LOBBY";
+    // The secondary menu button only makes sense when the primary button goes back to
+    // the lobby instead — for the final loser, the primary already goes to the menu.
+    if(menuBtn) menuBtn.style.display = isFinalLoser ? "none" : "block";
     btn.onclick=()=>{
+      if(!myPendingOverlay) return;
       myDismissedMatchId = myPendingOverlay.matchId;
       myPendingOverlay = null;
       updateRoundOverlays();
       if(isFinalLoser){ showMainMenu(); }
       else{ requestMouse(); }
     };
+    if(menuBtn) menuBtn.onclick=()=>{
+      if(myPendingOverlay){ myDismissedMatchId = myPendingOverlay.matchId; myPendingOverlay = null; }
+      updateRoundOverlays();
+      showMainMenu();
+    };
   }
 
   if(showWin){
     document.getElementById("win-screen-sub").textContent="You're the last one standing!";
     document.getElementById("win-screen-btn").onclick=()=>{
+      if(!myPendingOverlay) return;
       myDismissedMatchId = myPendingOverlay.matchId;
       myPendingOverlay = null;
       updateRoundOverlays();
       requestMouse();
+    };
+    const winMenuBtn=document.getElementById("win-screen-menu-btn");
+    if(winMenuBtn) winMenuBtn.onclick=()=>{
+      if(myPendingOverlay){ myDismissedMatchId = myPendingOverlay.matchId; myPendingOverlay = null; }
+      updateRoundOverlays();
+      showMainMenu();
     };
   }
 
