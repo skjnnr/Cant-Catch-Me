@@ -71,6 +71,22 @@ MIN_PLAYERS_TO_START, QUEUE_COUNTDOWN_MS, ROUND_REVEAL_MS,
 BOMB_RELEASE_DELAY_MS, BOMB_TIMER_MS, TAG_BONUS_MS, TAG_RADIUS,
 FINISHED_RESET_DELAY_MS.
 
+FIXES:
+- The bomb could detonate almost immediately after a tag, and different
+  players could see different countdowns. Cause: a periodic "heartbeat"
+  re-broadcast (meant to help late joiners catch up) was re-sending an
+  old timestamp, which corrupted each client's synced clock. It now
+  always stamps a fresh timestamp, so everyone's countdown is driven
+  off the same clock and stays accurate.
+- The bomb HUD showed 35s instead of 30s at the start of a round — it
+  now only starts counting once the bomb holder is actually released.
+- The win/kill screen (and its RETURN button) could disappear on its
+  own a few seconds after a match ended, before the player got to
+  click it. It's now captured locally the instant it happens and stays
+  up — with a working button — until the player actually clicks past
+  it or closes the tab, regardless of what the shared match state does
+  in the background.
+
 GITHUB PAGES:
 Replace index.html, style.css and game.js with these files.
 Commit the changes, then refresh the site with Ctrl+Shift+R.

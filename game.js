@@ -1822,6 +1822,7 @@ function defaultMatchState(){
     phase:"queue",        // "queue" | "active" | "finished"
     seq:0,
     updatedAt:Date.now(),
+    matchId:null,          // unique per match, so overlays survive a queue reset
     countdownEndsAt:null,
     roster:[],            // [{id,username}] snapshot for this match
     alive:[],              // ids still in the running
@@ -1836,13 +1837,22 @@ function defaultMatchState(){
 
 
 let matchState = defaultMatchState();
-let myDeathDismissed = false;
-let myWinDismissed = false;
+// The win/kill overlay is captured once (as myPendingOverlay) the moment it happens and
+// then rendered from that local snapshot rather than from live matchState — otherwise the
+// automatic queue-reset a few seconds later would clear deaths/phase out from under it and
+// make the screen (and its button) disappear before the player ever got to click it.
+let myPendingOverlay = null;   // {type:"win"|"kill", final:bool, matchId} | null
+let myDismissedMatchId = null; // matchId of the overlay the player has already clicked past
+let myDeathDismissed = false; // deprecated, kept only to avoid breaking old references
+let myWinDismissed = false;   // deprecated, kept only to avoid breaking old references
+
 let finishedResetScheduled = false;
 let lastDeathsLen = 0;
 
 function resetMatchStateLocal(){
   matchState = defaultMatchState();
+  myPendingOverlay = null;
+  myDismissedMatchId = null;
   myDeathDismissed = false;
   myWinDismissed = false;
   finishedResetScheduled = false;
@@ -1869,7 +1879,16 @@ function applyIncomingMatch(payload){
   // own device's raw clock.
   if(typeof payload.updatedAt==="number"){
     const sample = payload.updatedAt - Date.now();
-    clockOffsetMs = clockOffsetMs===0 ? sample : (clockOffsetMs*0.7 + sample*0.3);
+    if(clockOffsetMs===0){
+      clockOffsetMs = sample;
+    }else{
+      const diff = sample - clockOffsetMs;
+      // A big sudden jump is more likely a fluke (network hiccup, tab was
+      // backgrounded) than a real clock change, so ease into it rather than
+      // snapping straight to it.
+      const weight = Math.abs(diff) > 5000 ? 0.15 : 0.3;
+      clockOffsetMs += diff*weight;
+    }
   }
   matchState = payload;
   onMatchChanged();
@@ -1887,9 +1906,29 @@ function broadcastMatch(patch){
 
 function onMatchChanged(){
   maybeShowEliminationToast();
+  captureOverlayLatch();
   updateQueueHud();
   updateRoundOverlays();
   updateBombIndicators();
+}
+
+// Latches a win/kill overlay the instant it happens, independent of live matchState —
+// so it can't be yanked away by the automatic queue-reset before the player clicks its
+// button. Only clears on that click (see updateRoundOverlays' button handlers).
+function captureOverlayLatch(){
+  if(!matchState.matchId) return;
+  if(matchState.matchId===myDismissedMatchId) return;
+  if(myPendingOverlay && myPendingOverlay.matchId===matchState.matchId) return;
+
+  const isWinnerNow = matchState.phase==="finished" && matchState.winnerId===myId;
+  const amDeadNow = matchState.deaths.includes(myId);
+
+  if(isWinnerNow){
+    myPendingOverlay = {type:"win", matchId:matchState.matchId};
+  }else if(amDeadNow){
+    const winnerName = matchState.roster.find(r=>r.id===matchState.winnerId)?.username || "Player";
+    myPendingOverlay = {type:"kill", final:matchState.phase==="finished", matchId:matchState.matchId, winnerName};
+  }
 }
 
 // ---------- host-side lobby/queue logic ----------
@@ -1919,6 +1958,7 @@ function lockAndStartMatch(ids){
   const bombEndsAt = releasedAt+BOMB_TIMER_MS;
   broadcastMatch({
     phase:"active", countdownEndsAt:null,
+    matchId:"m"+Math.round(lockAt)+"-"+Math.floor(seededRandom01(seed+":id")*1e9),
     roster, alive:roster.map(r=>r.id), deaths:[],
     bombHolder, releasedAt, bombEndsAt,
     winnerId:null, tagCount:0
@@ -1927,7 +1967,7 @@ function lockAndStartMatch(ids){
 
 function resetMatchToQueue(){
   broadcastMatch({
-    phase:"queue", countdownEndsAt:null, roster:[], alive:[], deaths:[],
+    phase:"queue", countdownEndsAt:null, matchId:null, roster:[], alive:[], deaths:[],
     bombHolder:null, releasedAt:0, bombEndsAt:0, winnerId:null, tagCount:0
   });
 }
@@ -1962,9 +2002,12 @@ function hostTick(){
       resetMatchToQueue();
     }
   }else if(matchState.phase==="active"){
-    // Periodic heartbeat so late joiners / reconnects converge quickly.
+    // Periodic heartbeat so late joiners / reconnects converge quickly. Must carry a
+    // freshly-stamped updatedAt — reusing the old one would make every receiver think
+    // this client's clock is however many seconds stale, corrupting their synced clock
+    // and causing bombs to appear to detonate early/late for different players.
     if(now-(matchState.updatedAt||0) > 4000){
-      try{ ch.send({type:"broadcast",event:"match",payload:matchState}); }catch(_){}
+      try{ ch.send({type:"broadcast",event:"match",payload:{...matchState, updatedAt:Date.now()}}); }catch(_){}
     }
   }
 }
@@ -2034,11 +2077,11 @@ window.addEventListener("keydown", e=>{
 
 // ---------- movement gating ----------
 function isMatchMovementLocked(){
+  // Frozen on the kill/win screen until they actually click through it.
+  if(myPendingOverlay) return true;
+
   const inMatch = matchState.roster.some(r=>r.id===myId);
   if(!inMatch) return false;
-
-  const amDead = matchState.deaths.includes(myId);
-  if(amDead) return !myDeathDismissed;
 
   if(matchState.phase!=="active") return false;
   // Only the bomb holder is frozen at the start of a round — everyone else can move
@@ -2159,9 +2202,6 @@ function updateRoundOverlays(){
 
   const inMatch = matchState.roster.some(r=>r.id===myId);
   const amDead = matchState.deaths.includes(myId);
-  if(!amDead) myDeathDismissed=false;
-  const isWinner = matchState.phase==="finished" && matchState.winnerId===myId;
-  if(!isWinner) myWinDismissed=false;
 
   let showRound=false, showKill=false, showWin=false;
 
@@ -2171,8 +2211,11 @@ function updateRoundOverlays(){
     showRound=true; renderRoundReleaseWait(now);
   }
 
-  if(amDead && !myDeathDismissed && !isWinner) showKill=true;
-  if(isWinner && !myWinDismissed) showWin=true;
+  // Win/kill screens render from the latched snapshot (myPendingOverlay), not live
+  // matchState — so they stay up, with a working button, until the player actually
+  // clicks past them, even after the match resets in the background.
+  showKill = myPendingOverlay?.type==="kill";
+  showWin = myPendingOverlay?.type==="win";
 
   roundScreen.style.display = showRound ? "flex" : "none";
   killScreen.style.display = showKill ? "flex" : "none";
@@ -2181,14 +2224,15 @@ function updateRoundOverlays(){
   if(showRound||showKill||showWin) document.exitPointerLock?.();
 
   if(showKill){
-    const isFinalLoser = matchState.phase==="finished";
+    const isFinalLoser = !!myPendingOverlay.final;
     document.getElementById("kill-screen-sub").textContent = isFinalLoser
-      ? (rosterName(matchState.winnerId)+" survived. Better luck next time.")
+      ? (myPendingOverlay.winnerName+" survived. Better luck next time.")
       : "Better luck in the next round.";
     const btn=document.getElementById("kill-screen-btn");
     btn.textContent = isFinalLoser ? "RETURN TO MAIN MENU" : "RETURN TO LOBBY";
     btn.onclick=()=>{
-      myDeathDismissed=true;
+      myDismissedMatchId = myPendingOverlay.matchId;
+      myPendingOverlay = null;
       updateRoundOverlays();
       if(isFinalLoser){ showMainMenu(); }
       else{ requestMouse(); }
@@ -2198,19 +2242,22 @@ function updateRoundOverlays(){
   if(showWin){
     document.getElementById("win-screen-sub").textContent="You're the last one standing!";
     document.getElementById("win-screen-btn").onclick=()=>{
-      myWinDismissed=true;
+      myDismissedMatchId = myPendingOverlay.matchId;
+      myPendingOverlay = null;
       updateRoundOverlays();
       requestMouse();
     };
   }
 
-  // Bomb HUD + tag prompt for everyone who's actively, freely playing (non-holders are
-  // always "playing" the instant the round starts; the holder joins once released).
-  const playing = inMatch && !amDead && matchState.phase==="active" &&
-    (matchState.bombHolder!==myId || now>=matchState.releasedAt);
+  // Bomb HUD + tag prompt for everyone once the round is actually live — i.e. once the
+  // bomb holder has been released and the real 30s window has started. Non-holders can
+  // already move during the holder's freeze, but the countdown itself doesn't start
+  // until release, so it always reads a true 30 rather than an inflated number.
+  const live = inMatch && !amDead && matchState.phase==="active" && now>=matchState.releasedAt;
+  const gettingReady = inMatch && !amDead && matchState.phase==="active" && now<matchState.releasedAt && matchState.bombHolder!==myId;
 
-  bombHud.style.display = playing ? "flex" : "none";
-  if(playing){
+  bombHud.style.display = (live||gettingReady) ? "flex" : "none";
+  if(live){
     const remainSec = Math.max(0, Math.ceil((matchState.bombEndsAt-now)/1000));
     const roleEl=document.getElementById("bomb-hud-role");
     if(matchState.bombHolder===myId){
@@ -2221,8 +2268,14 @@ function updateRoundOverlays(){
       bombHud.classList.remove("bomb-active");
     }
     document.getElementById("bomb-hud-timer").textContent=remainSec+"s";
+  }else if(gettingReady){
+    document.getElementById("bomb-hud-role").textContent="🏃 "+rosterName(matchState.bombHolder)+" is starting with the bomb";
+    bombHud.classList.remove("bomb-active");
+    const s=Math.max(0,Math.ceil((matchState.releasedAt-now)/1000));
+    document.getElementById("bomb-hud-timer").textContent="starts in "+s+"s";
   }
 
+  const playing = live; // kept for the tag-prompt check below
   let canTag=false;
   if(playing && matchState.bombHolder===myId) canTag = nearestTaggableDistance()<=TAG_RADIUS;
   tagPrompt.style.display = canTag ? "block" : "none";
