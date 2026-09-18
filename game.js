@@ -1788,7 +1788,14 @@ setInterval(()=>{
 // wins), so everyone converges even though nobody is a real server.
 
 const MIN_PLAYERS_TO_START = 2;      // minimum players to start a match
-const QUEUE_COUNTDOWN_MS   = 30000;  // 30s queue countdown
+const TAGBOMB_BUILD_ID = "tagbomb-sync-fix-4"; // bump this every time this section changes
+console.log("[CantCatchMe] tag/bomb build:", TAGBOMB_BUILD_ID);
+{
+  const badge=document.createElement("div");
+  badge.textContent="build: "+TAGBOMB_BUILD_ID;
+  badge.style.cssText="position:fixed;left:6px;bottom:4px;z-index:9999;font:11px monospace;color:#7d8a99;background:#0009;padding:2px 6px;border-radius:4px;pointer-events:none;";
+  document.body.appendChild(badge);
+}const QUEUE_COUNTDOWN_MS   = 30000;  // 30s queue countdown
 const BOMB_RELEASE_DELAY_MS= 5000;   // bomb holder frozen for 5s at the start of a round
 const BOMB_TIMER_MS        = 30000;  // 30s to tag someone
 const TAG_BONUS_MS         = 3000;   // +3s per tag
